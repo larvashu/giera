@@ -26,12 +26,30 @@ var _highlight_markers: Dictionary[Vector2i, MeshInstance3D] = {}
 var _highlighted_cells: Dictionary[Vector2i, int] = {}
 var _highlight_material: StandardMaterial3D
 var _terrain_features: Array[Vector4] = []
+var _terrain_strokes: Array[Dictionary] = []
+var _use_procedural_features: bool = true
 var _terrain_material: ShaderMaterial
 var _grid_visible: bool = false
 
 func _ready() -> void:
+	_load_selected_terrain()
 	_initialize_terrain_features()
 	_build_grid()
+
+func _load_selected_terrain() -> void:
+	var session := get_node_or_null("/root/GameSession") as GameSessionState
+	if session == null or session.selected_map_id == "builtin:forest":
+		return
+	var catalog := get_node_or_null("/root/MapCatalog") as MapCatalogService
+	if catalog == null:
+		return
+	var data: Dictionary = catalog.load_map(session.selected_map_id)
+	_use_procedural_features = false
+	var raw_strokes: Variant = data.get("terrain_strokes", [])
+	if raw_strokes is Array:
+		for value: Variant in raw_strokes:
+			if value is Dictionary:
+				_terrain_strokes.append((value as Dictionary).duplicate(true))
 
 func block_cell(cell: Vector2i) -> void:
 	if is_inside_grid(cell):
@@ -305,10 +323,26 @@ func terrain_height(world_x: float, world_z: float) -> float:
 		var influence: float = 1.0 - distance / feature.z
 		influence = influence * influence * (3.0 - 2.0 * influence)
 		result += feature.w * influence
+	var base_height: float = result
+	for stroke: Dictionary in _terrain_strokes:
+		var center := Vector2(float(stroke.get("x", 0.0)), float(stroke.get("z", 0.0)))
+		var radius := maxf(0.1, float(stroke.get("radius", 1.0)))
+		var stroke_distance := Vector2(world_x, world_z).distance_to(center)
+		if stroke_distance >= radius:
+			continue
+		var stroke_influence: float = 1.0 - stroke_distance / radius
+		stroke_influence = stroke_influence * stroke_influence * (3.0 - 2.0 * stroke_influence)
+		var strength := float(stroke.get("strength", 0.5))
+		match str(stroke.get("operation", "raise")):
+			"raise": result += strength * stroke_influence
+			"lower": result -= strength * stroke_influence
+			"smooth": result = lerpf(result, base_height, clampf(strength * 0.35 * stroke_influence, 0.0, 1.0))
 	return result
 
 func _initialize_terrain_features() -> void:
 	_terrain_features.clear()
+	if not _use_procedural_features:
+		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 5_024_060
 	for index: int in range(24):
