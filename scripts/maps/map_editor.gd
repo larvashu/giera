@@ -10,32 +10,43 @@ const ASSETS: Dictionary[String, String] = {
 	"grass_1": "res://assets/models/environment/grass_clump_01.glb",
 	"grass_2": "res://assets/models/environment/grass_clump_02.glb",
 }
-const TOOLS: Array[String] = [
-	"purple_tree_1", "purple_tree_2", "purple_tree_3", "large_tree",
-	"bush", "grass_1", "grass_2", "erase", "player_spawn", "enemy_spawn",
-	"terrain_raise", "terrain_lower", "terrain_smooth"
+const TOOL_GROUPS: Array[Dictionary] = [
+	{"title": "TEREN — KSZTALT", "tools": [
+		["terrain_raise", "Podnies"], ["terrain_lower", "Obniz"], ["terrain_smooth", "Wygladz"],
+	]},
+	{"title": "TEREN — MATERIAL", "tools": [
+		["paint_0", "Trawa"], ["paint_1", "Ziemia"], ["paint_2", "Piasek"], ["paint_3", "Skala"],
+	]},
+	{"title": "TEREN — WODA", "tools": [
+		["water_add", "Dodaj wode"], ["water_remove", "Usun wode"],
+	]},
+	{"title": "OBIEKTY / DRZEWA", "tools": [
+		["purple_tree_1", "Drzewo I"], ["purple_tree_2", "Drzewo II"],
+		["purple_tree_3", "Drzewo III"], ["large_tree", "Wielkie"],
+		["bush", "Krzak"], ["grass_1", "Trawa I"], ["grass_2", "Trawa II"], ["erase", "Gumka"],
+	]},
+	{"title": "POSTACIE", "tools": [
+		["player_spawn", "Start gracza"], ["enemy_spawn", "Start wroga"],
+	]},
 ]
-const TOOL_LABELS: Array[String] = [
-	"Drzewo I", "Drzewo II", "Drzewo III", "Wielkie drzewo",
-	"Krzak", "Trawa I", "Trawa II", "Gumka", "Start P1", "Start P2",
-	"Teren: podnies", "Teren: obniz", "Teren: wyrownaj"
-]
+
 var objects: Array[Dictionary] = []
 var player_spawns: Array[Dictionary] = [{"x": 78, "z": 9}, {"x": 81, "z": 9}]
 var enemy_spawns: Array[Dictionary] = [{"x": 78, "z": 180}, {"x": 81, "z": 180}]
-var active_tool: String = "purple_tree_1"
+var active_tool: String = "terrain_raise"
 var brush_radius: float = 6.0
 var brush_strength: float = 0.65
 var _object_nodes: Array[Node3D] = []
-var _dragging_camera: bool = false
-var _last_mouse_position: Vector2
-var _last_action_msec: int = 0
+var _dragging_camera := false
+var _last_mouse_position := Vector2.ZERO
+var _last_action_msec := 0
 
 @onready var canvas: Control = %MapCanvas
 var _viewport_container: SubViewportContainer
 var _viewport: SubViewport
 var _world: Node3D
 var _terrain_surface: TerrainMapSurface
+var _water_surface: WaterMapSurface
 var _objects_root: Node3D
 var _markers_root: Node3D
 var _camera: Camera3D
@@ -48,35 +59,61 @@ func _ready() -> void:
 	_build_sidebar_controls()
 	_build_3d_view()
 	await _terrain_surface.setup(_camera)
+	_water_surface.setup(_terrain_surface)
 	_connect_ui()
 	_rebuild_objects()
 	_update_markers()
-	_update_status("Terrain3D gotowy")
+	_update_status("Edytor gotowy — wybierz widoczne narzedzie")
 
 func _build_sidebar_controls() -> void:
-	for index: int in range(TOOLS.size()):
-		%ToolOption.add_item(TOOL_LABELS[index])
-	var tool_option := %ToolOption as OptionButton
-	var parent := tool_option.get_parent() as VBoxContainer
-	var tool_index := tool_option.get_index()
+	%ToolOption.visible = false
+	var parent := %ToolOption.get_parent() as VBoxContainer
+	var insertion_index := %ToolOption.get_index()
+	var tools_panel := VBoxContainer.new()
+	tools_panel.name = "VisibleToolPalette"
+	tools_panel.add_theme_constant_override("separation", 3)
+	parent.add_child(tools_panel)
+	parent.move_child(tools_panel, insertion_index)
+	for group: Dictionary in TOOL_GROUPS:
+		var title := Label.new()
+		title.text = str(group["title"])
+		title.add_theme_font_size_override("font_size", 12)
+		title.modulate = Color(0.72, 0.9, 0.84)
+		tools_panel.add_child(title)
+		var grid := GridContainer.new()
+		grid.columns = 2
+		grid.add_theme_constant_override("h_separation", 4)
+		grid.add_theme_constant_override("v_separation", 3)
+		tools_panel.add_child(grid)
+		for entry: Array in group["tools"]:
+			var button := Button.new()
+			var tool_id := str(entry[0])
+			var label := str(entry[1])
+			button.text = label
+			button.custom_minimum_size = Vector2(76.0, 24.0)
+			button.add_theme_font_size_override("font_size", 11)
+			button.pressed.connect(_select_tool.bind(tool_id, label))
+			grid.add_child(button)
 	_brush_label = Label.new()
-	_brush_label.text = "Pedzel terenu: promien 6.0 / sila 0.65"
-	parent.add_child(_brush_label)
-	parent.move_child(_brush_label, tool_index + 1)
+	_brush_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tools_panel.add_child(_brush_label)
 	_brush_radius_slider = HSlider.new()
 	_brush_radius_slider.min_value = 1.5
 	_brush_radius_slider.max_value = 18.0
 	_brush_radius_slider.step = 0.5
 	_brush_radius_slider.value = brush_radius
-	parent.add_child(_brush_radius_slider)
-	parent.move_child(_brush_radius_slider, tool_index + 2)
+	tools_panel.add_child(_brush_radius_slider)
 	_brush_strength_slider = HSlider.new()
 	_brush_strength_slider.min_value = 0.1
 	_brush_strength_slider.max_value = 2.0
 	_brush_strength_slider.step = 0.05
 	_brush_strength_slider.value = brush_strength
-	parent.add_child(_brush_strength_slider)
-	parent.move_child(_brush_strength_slider, tool_index + 3)
+	tools_panel.add_child(_brush_strength_slider)
+	_update_brush_label()
+
+func _select_tool(tool_id: String, label: String) -> void:
+	active_tool = tool_id
+	_update_status("Narzedzie: " + label)
 
 func _build_3d_view() -> void:
 	_viewport_container = SubViewportContainer.new()
@@ -93,16 +130,12 @@ func _build_3d_view() -> void:
 	_viewport.msaa_3d = Viewport.MSAA_4X
 	_viewport_container.add_child(_viewport)
 	_world = Node3D.new()
-	_world.name = "MapWorld"
 	_viewport.add_child(_world)
 	_objects_root = Node3D.new()
-	_objects_root.name = "PlacedObjects"
 	_world.add_child(_objects_root)
 	_markers_root = Node3D.new()
-	_markers_root.name = "Markers"
 	_world.add_child(_markers_root)
 	_camera = Camera3D.new()
-	_camera.name = "EditorCamera"
 	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	_camera.size = 92.0
 	_camera.position = Vector3(80.0, 105.0, 134.0)
@@ -110,25 +143,25 @@ func _build_3d_view() -> void:
 	_camera.current = true
 	_world.add_child(_camera)
 	_terrain_surface = TerrainMapSurface.new()
-	_terrain_surface.name = "TerrainSurface"
 	_world.add_child(_terrain_surface)
+	_water_surface = WaterMapSurface.new()
+	_world.add_child(_water_surface)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-55.0, -32.0, 0.0)
 	sun.shadow_enabled = true
 	sun.light_energy = 1.15
 	_world.add_child(sun)
-	var environment := WorldEnvironment.new()
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.055, 0.075, 0.095)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.58, 0.66, 0.78)
-	env.ambient_light_energy = 0.55
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	environment.environment = env
-	_world.add_child(environment)
+	var world_environment := WorldEnvironment.new()
+	var environment := Environment.new()
+	environment.background_mode = Environment.BG_COLOR
+	environment.background_color = Color(0.055, 0.075, 0.095)
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_color = Color(0.58, 0.66, 0.78)
+	environment.ambient_light_energy = 0.55
+	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	world_environment.environment = environment
+	_world.add_child(world_environment)
 	_cursor = MeshInstance3D.new()
-	_cursor.name = "BrushCursor"
 	var cursor_mesh := CylinderMesh.new()
 	cursor_mesh.top_radius = 0.5
 	cursor_mesh.bottom_radius = 0.5
@@ -144,7 +177,6 @@ func _build_3d_view() -> void:
 	_markers_root.add_child(_cursor)
 
 func _connect_ui() -> void:
-	%ToolOption.item_selected.connect(_on_tool_selected)
 	_viewport_container.gui_input.connect(_on_viewport_input)
 	%SaveButton.pressed.connect(_save)
 	%ClearButton.pressed.connect(_clear_map)
@@ -157,11 +189,6 @@ func _connect_ui() -> void:
 		brush_strength = value
 		_update_brush_label()
 	)
-
-func _on_tool_selected(index: int) -> void:
-	active_tool = TOOLS[index]
-	_cursor.visible = false
-	_update_status("Narzedzie: %s" % TOOL_LABELS[index])
 
 func _on_viewport_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
@@ -182,47 +209,49 @@ func _on_viewport_input(event: InputEvent) -> void:
 			_camera.size = minf(210.0, _camera.size * 1.12)
 		elif button.pressed and button.button_index == MOUSE_BUTTON_LEFT:
 			var now_msec := Time.get_ticks_msec()
-			if now_msec - _last_action_msec < 140:
+			if now_msec - _last_action_msec < 90:
 				return
 			_last_action_msec = now_msec
-			var world_position: Variant = _screen_to_map(button.position)
-			if world_position != null:
-				_apply_tool(world_position as Vector3)
+			var hit: Variant = _screen_to_map(button.position)
+			if hit != null:
+				_apply_tool(hit as Vector3)
 
 func _pan_camera(delta: Vector2) -> void:
-	var factor: float = _camera.size / maxf(320.0, _viewport_container.size.y)
-	_camera.position.x -= delta.x * factor
-	_camera.position.z -= delta.y * factor
-	_camera.position.x = clampf(_camera.position.x, -20.0, float(GRID_SIZE.x) + 20.0)
-	_camera.position.z = clampf(_camera.position.z, 20.0, float(GRID_SIZE.y) + 100.0)
+	var factor := _camera.size / maxf(320.0, _viewport_container.size.y)
+	_camera.position.x = clampf(_camera.position.x - delta.x * factor, -20.0, float(GRID_SIZE.x) + 20.0)
+	_camera.position.z = clampf(_camera.position.z - delta.y * factor, 20.0, float(GRID_SIZE.y) + 100.0)
 
 func _screen_to_map(screen_position: Vector2) -> Variant:
-	var origin := _camera.project_ray_origin(screen_position)
-	var direction := _camera.project_ray_normal(screen_position)
-	var hit := _terrain_surface.get_intersection(origin, direction)
-	if is_nan(hit.x) or is_nan(hit.y) or is_nan(hit.z):
-		return null
-	if hit.x < -0.5 or hit.z < -0.5 or hit.x >= GRID_SIZE.x - 0.5 or hit.z >= GRID_SIZE.y - 0.5:
+	var hit := _terrain_surface.get_intersection(
+		_camera.project_ray_origin(screen_position),
+		_camera.project_ray_normal(screen_position)
+	)
+	if is_nan(hit.x) or hit.x < -0.5 or hit.z < -0.5 or hit.x >= GRID_SIZE.x - 0.5 or hit.z >= GRID_SIZE.y - 0.5:
 		return null
 	return hit
 
 func _update_cursor(screen_position: Vector2) -> void:
-	var world_position: Variant = _screen_to_map(screen_position)
-	if world_position == null:
+	var value: Variant = _screen_to_map(screen_position)
+	if value == null:
 		_cursor.visible = false
 		return
-	var hit := world_position as Vector3
+	var hit := value as Vector3
 	_cursor.visible = true
-	_cursor.position = hit + Vector3.UP * 0.08
-	var radius: float = brush_radius if active_tool.begins_with("terrain_") else 0.75
+	_cursor.position = hit + Vector3.UP * 0.16
+	var uses_brush := active_tool.begins_with("terrain_") or active_tool.begins_with("paint_") or active_tool.begins_with("water_")
+	var radius := brush_radius if uses_brush else 0.75
 	_cursor.scale = Vector3(radius * 2.0, 1.0, radius * 2.0)
 
 func _apply_tool(world_position: Vector3) -> void:
 	var cell := Vector2i(roundi(world_position.x), roundi(world_position.z))
 	if active_tool.begins_with("terrain_"):
-		var operation := active_tool.trim_prefix("terrain_")
-		_terrain_surface.apply_brush(world_position, brush_radius, brush_strength, operation)
+		_terrain_surface.apply_brush(world_position, brush_radius, brush_strength, active_tool.trim_prefix("terrain_"))
 		_reposition_scene_content()
+		_water_surface.load_cells(_water_surface.serialize_cells())
+	elif active_tool.begins_with("paint_"):
+		_terrain_surface.paint_texture(world_position, brush_radius, brush_strength, int(active_tool.trim_prefix("paint_")))
+	elif active_tool == "water_add" or active_tool == "water_remove":
+		_water_surface.apply_brush(world_position, brush_radius, active_tool == "water_remove")
 	elif active_tool == "erase":
 		_erase_nearest(world_position)
 	elif active_tool == "player_spawn":
@@ -232,19 +261,13 @@ func _apply_tool(world_position: Vector3) -> void:
 		_set_spawn(enemy_spawns, cell)
 		_update_markers()
 	else:
-		objects.append({
-			"type": active_tool,
-			"x": cell.x,
-			"z": cell.y,
-			"rotation": randf_range(0.0, 360.0),
-			"scale": 1.0,
-		})
+		objects.append({"type": active_tool, "x": cell.x, "z": cell.y, "rotation": randf_range(0.0, 360.0), "scale": 1.0})
 		_rebuild_objects()
-	_update_status("Obiektow: %d" % objects.size())
+	_update_status("Obiekty: %d | Woda: %d pol" % [objects.size(), _water_surface.get_cell_count()])
 
 func _erase_nearest(world_position: Vector3) -> void:
-	var best_index: int = -1
-	var best_distance: float = 2.5
+	var best_index := -1
+	var best_distance := 2.5
 	for index: int in range(objects.size()):
 		var data: Dictionary = objects[index]
 		var distance := Vector2(float(data.get("x", 0)), float(data.get("z", 0))).distance_to(Vector2(world_position.x, world_position.z))
@@ -282,15 +305,16 @@ func _rebuild_objects() -> void:
 		model.scale = Vector3.ONE * scale_value
 		model.rotation.y = deg_to_rad(float(data.get("rotation", 0.0)))
 		holder.add_child(model)
-		holder.position = Vector3(float(data.get("x", 0)), terrain_height(float(data.get("x", 0)), float(data.get("z", 0))), float(data.get("z", 0)))
+		var x := float(data.get("x", 0))
+		var z := float(data.get("z", 0))
+		holder.position = Vector3(x, terrain_height(x, z), z)
 		_objects_root.add_child(holder)
 		_object_nodes.append(holder)
 
 func _reposition_scene_content() -> void:
 	for index: int in range(mini(objects.size(), _object_nodes.size())):
 		var data: Dictionary = objects[index]
-		var node := _object_nodes[index]
-		node.position.y = terrain_height(float(data.get("x", 0)), float(data.get("z", 0)))
+		_object_nodes[index].position.y = terrain_height(float(data.get("x", 0)), float(data.get("z", 0)))
 	_update_markers()
 
 func _update_markers() -> void:
@@ -309,12 +333,12 @@ func _create_spawn_marker(data: Dictionary, color: Color) -> void:
 	mesh.bottom_radius = 0.7
 	mesh.height = 0.12
 	marker.mesh = mesh
-	var spawn_material := StandardMaterial3D.new()
-	spawn_material.albedo_color = color
-	spawn_material.emission_enabled = true
-	spawn_material.emission = color
-	spawn_material.emission_energy_multiplier = 1.4
-	marker.material_override = spawn_material
+	var marker_material := StandardMaterial3D.new()
+	marker_material.albedo_color = color
+	marker_material.emission_enabled = true
+	marker_material.emission = color
+	marker_material.emission_energy_multiplier = 1.4
+	marker.material_override = marker_material
 	var x := float(data.get("x", 0))
 	var z := float(data.get("z", 0))
 	marker.position = Vector3(x, terrain_height(x, z) + 0.1, z)
@@ -323,12 +347,13 @@ func _create_spawn_marker(data: Dictionary, color: Color) -> void:
 func _clear_map() -> void:
 	objects.clear()
 	_terrain_surface.clear_height()
+	_water_surface.clear()
 	_rebuild_objects()
 	_update_markers()
 	_update_status("Mapa wyczyszczona")
 
 func _save() -> void:
-	var map_name: String = str(%NameEdit.text).strip_edges()
+	var map_name := str(%NameEdit.text).strip_edges()
 	if map_name.is_empty():
 		_update_status("Podaj nazwe mapy.")
 		return
@@ -336,17 +361,18 @@ func _save() -> void:
 	var terrain_directory := "user://maps/terrain/" + safe_name
 	_terrain_surface.save_to_directory(terrain_directory)
 	var path: String = get_node("/root/MapCatalog").save_map({
-		"version": 3,
+		"version": 4,
 		"name": map_name,
 		"objects": objects,
 		"player_spawns": player_spawns,
 		"enemy_spawns": enemy_spawns,
 		"terrain_directory": terrain_directory,
+		"water_cells": _water_surface.serialize_cells(),
 	})
 	_update_status("Zapisano: " + path)
 
 func _update_brush_label() -> void:
-	_brush_label.text = "Pedzel terenu: promien %.1f / sila %.2f" % [brush_radius, brush_strength]
+	_brush_label.text = "PEDZEL — promien %.1f / sila %.2f" % [brush_radius, brush_strength]
 
 func _update_status(message: String) -> void:
-	%StatusLabel.text = message + "\nLPM: uzyj | PPM/MMB: przesun | rolka: zoom"
+	%StatusLabel.text = message + "\nLPM: maluj/stawiaj | PPM/MMB: przesun | rolka: zoom"

@@ -27,6 +27,7 @@ var _highlighted_cells: Dictionary[Vector2i, int] = {}
 var _highlight_material: StandardMaterial3D
 var _terrain_features: Array[Vector4] = []
 var _terrain_surface: TerrainMapSurface
+var _water_surface: WaterMapSurface
 var _use_procedural_features: bool = true
 var _terrain_material: ShaderMaterial
 var _grid_visible: bool = false
@@ -53,6 +54,11 @@ func _load_selected_terrain() -> void:
 	var terrain_directory := str(data.get("terrain_directory", ""))
 	var legacy_strokes: Array = data.get("terrain_strokes", []) as Array
 	await _terrain_surface.setup(null, terrain_directory, legacy_strokes)
+	_water_surface = WaterMapSurface.new()
+	_water_surface.name = "WaterMapSurface"
+	_water_surface.setup(_terrain_surface)
+	add_child(_water_surface)
+	_water_surface.load_cells(data.get("water_cells", []) as Array)
 
 func block_cell(cell: Vector2i) -> void:
 	if is_inside_grid(cell):
