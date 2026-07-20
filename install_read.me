@@ -1,119 +1,148 @@
-INSTALL README — Godot + Codex + Godot AI MCP (Windows)
-=========================================================
+GODOT + CODEX + MCP — INSTALACJA I UŻYCIE (WINDOWS)
+====================================================
 
-Plik instalacyjny:
-Setup-Godot-Codex-MCP-v3.ps1
+Ten zestaw pozwala pracować z projektem Godot przez Codex. Codex może wtedy
+odczytywać sceny, węzły, zasoby, logi edytora oraz uruchamiać i testować grę
+przez narzędzia Godot AI MCP.
 
-Zakres
-------
-Skrypt jest przeznaczony dla Windows PowerShell 5.1 lub nowszego. Konfiguruje
-istniejący projekt Godot do pracy z OpenAI Codex CLI i pluginem Godot AI MCP.
+1. Wymagania
+------------
+- Windows 10 lub 11.
+- Windows PowerShell 5.1 lub nowszy.
+- Godot 4.x z edytorem.
+- Projekt zawierający plik project.godot.
+- Internet podczas pierwszej instalacji.
+- Konto OpenAI do logowania Codex.
 
-WAŻNE: obecna wersja skryptu NIE instaluje Godota. Potrafi jedynie wykryć
-godot.exe/godot4.exe w PATH albo użyć ścieżki przekazanej parametrem -GodotExe.
+Instalator sam wykrywa i pomija istniejące uv oraz Codex CLI. Jeśli brakuje
+Node.js, próbuje zainstalować wersję LTS przez winget.
 
-Co skrypt obecnie robi
+UWAGA: obecna wersja instalatora nie instaluje samego Godota. Godot musi być
+już zainstalowany, a jego plik .exe dostępny w PATH lub podany przez -GodotExe.
+
+2. Pierwsza instalacja
 ----------------------
-1. Sprawdza, czy wskazany katalog zawiera project.godot.
-2. Szuka istniejącej instalacji Godota, ale jej nie instaluje.
-3. Sprawdza obecność uv.exe:
-   - jeśli istnieje, nie instaluje go ponownie;
-   - jeśli nie istnieje, pobiera oficjalny instalator uv.
-4. Sprawdza obecność codex.exe lub codex.cmd:
-   - jeśli istnieje, nie instaluje Codex ponownie;
-   - jeśli nie istnieje, instaluje Node.js LTS przez winget (gdy potrzeba),
-     a następnie @openai/codex przez npm.
-5. Pobiera plugin Godot AI z GitHub i kopiuje go do addons/godot_ai.
-6. Włącza plugin w project.godot, jeśli nie jest już włączony.
-7. Konfiguruje endpoint MCP:
-   godot-ai -> http://127.0.0.1:8000/mcp
-8. Dodaje reguły do AGENTS.md tylko wtedy, gdy nie ma znacznika konfiguracji.
-9. Tworzy lub nadpisuje Start-Godot-Codex.ps1.
-10. Opcjonalnie uruchamia Godota i codex login.
-
-Bezpieczne uruchomienie
------------------------
-Uruchom PowerShell w zwykłym trybie użytkownika. Prawa administratora mogą być
-potrzebne tylko wtedy, gdy winget musi zainstalować Node.js.
-
-Przykład:
+Uruchom PowerShell i przejdź do katalogu z instalatorem:
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\Setup-Godot-Codex-MCP-v3.ps1" -ProjectPath "C:\sciezka\do\projektu" -GodotExe "C:\sciezka\do\godot.exe"
 
-Jeżeli uv, Node.js/npm i Codex są już zainstalowane:
+Instalator:
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\Setup-Godot-Codex-MCP-v3.ps1" -ProjectPath "C:\sciezka\do\projektu" -GodotExe "C:\sciezka\do\godot.exe" -SkipToolInstall
+- instaluje brakujące uv, Node.js i Codex CLI;
+- dodaje plugin do addons/godot_ai;
+- włącza plugin w project.godot;
+- rejestruje MCP jako godot-ai pod adresem:
+  http://127.0.0.1:8000/mcp
+- dodaje reguły pracy do AGENTS.md;
+- tworzy Start-Godot-Codex.ps1;
+- tworzy kopię zmienianych plików w .godot-mcp-backup-*.
 
-Aby nie uruchamiać Godota ani logowania po konfiguracji, dodaj:
+Opcje:
 
--SkipLaunch
+-SkipToolInstall   nie instaluje uv, Node.js ani Codex
+-SkipLaunch        nie uruchamia Godota ani codex login
 
-Wymagania
----------
-- Windows 10 lub Windows 11.
-- Windows PowerShell 5.1 lub nowszy.
-- Dostęp do internetu i HTTPS.
-- Istniejący projekt Godot z plikiem project.godot.
-- Godot 4.x z edytorem (obecnie trzeba zainstalować osobno).
-- winget, jeśli Node.js nie jest już zainstalowany.
-- Możliwość uruchamiania skryptów PowerShell.
-- Konto OpenAI i jednorazowe logowanie Codex CLI.
+Przykład bez instalowania istniejących narzędzi i bez automatycznego startu:
 
-Czego brakuje do pełnego, bezpiecznego działania
-------------------------------------------------
-1. Instalacji Godota.
-   Skrypt jedynie wykrywa plik wykonywalny. Powinien sprawdzać zainstalowaną
-   wersję i, tylko gdy Godota brak, instalować wybraną stabilną wersję lub
-   wyświetlać jednoznaczną instrukcję.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\Setup-Godot-Codex-MCP-v3.ps1" -ProjectPath "C:\sciezka\do\projektu" -GodotExe "C:\sciezka\do\godot.exe" -SkipToolInstall -SkipLaunch
 
-2. Idempotentnej obsługi pluginu.
-   Obecnie addons/godot_ai jest zawsze archiwizowany, usuwany i pobierany
-   ponownie, nawet gdy plugin już istnieje. Skrypt powinien odczytać jego wersję
-   i pominąć instalację, jeśli zgodna wersja jest już obecna.
+3. Codzienna praca
+------------------
+Najprościej uruchom z katalogu projektu:
 
-3. Stabilnej wersji pluginu.
-   Pobierana jest bieżąca gałąź main. Dla powtarzalnych instalacji należy użyć
-   konkretnego tagu lub commita i zweryfikować sumę SHA-256 pobranego archiwum.
+powershell.exe -ExecutionPolicy Bypass -File ".\Start-Godot-Codex.ps1"
 
-4. Idempotentnej konfiguracji MCP.
-   Obecnie wpis godot-ai jest zawsze usuwany i dodawany ponownie. Najpierw
-   należy odczytać konfigurację i pozostawić ją bez zmian, jeśli URL jest zgodny.
+Launcher otwiera projekt w Godot, czeka kilka sekund, a następnie uruchamia
+Codex w tym samym katalogu.
 
-5. Wykrywania istniejącego logowania Codex.
-   Bez -SkipLaunch skrypt zawsze uruchamia codex login. Powinien najpierw
-   sprawdzić stan uwierzytelnienia i pominąć logowanie, jeśli sesja jest aktywna.
-   Skrypt nie powinien odczytywać, kopiować ani zapisywać tokenów w projekcie.
+Można też uruchomić wszystko ręcznie:
 
-6. Ochrony istniejącego launchera.
-   Start-Godot-Codex.ps1 jest zawsze nadpisywany. Powinien być zmieniany tylko
-   wtedy, gdy jego treść pochodzi z instalatora albo użytkownik jawnie zezwoli
-   na nadpisanie.
+1. Otwórz projekt w Godot.
+2. Wejdź w Project > Project Settings > Plugins.
+3. Sprawdź, czy Godot AI jest włączony.
+4. Poczekaj, aż dock Godot AI pokaże działający serwer MCP.
+5. Otwórz PowerShell w katalogu projektu.
+6. Przy pierwszym użyciu wykonaj:
 
-7. Tworzenia backupu tylko przy zmianach.
-   Katalog .godot-mcp-backup-* powstaje przy każdym uruchomieniu, nawet gdy nie
-   ma nic do zmiany. Powinien powstawać dopiero przed pierwszą modyfikacją.
+codex login
 
-8. Pełnego testu końcowego.
-   Po konfiguracji skrypt powinien sprawdzić wersje Godota, uv i Codex, obecność
-   plugin.cfg, aktywację pluginu, dostępność portu 8000 oraz wynik połączenia MCP.
+7. Uruchom Codex:
 
-9. Lepszej obsługi środowiska.
-   Należy sprawdzić architekturę Windows, proxy/TLS, dostępność miejsca na dysku,
-   blokadę plików przez uruchomiony edytor Godot i kody wyjścia każdej operacji.
+codex
 
-10. Bezpiecznego trybu podglądu.
-    Przydatny byłby parametr -WhatIf lub -CheckOnly pokazujący, co zostanie
-    zainstalowane albo zmienione, bez zapisu na dysku.
+Godot musi pozostać otwarty podczas pracy. Plugin działający w edytorze
+udostępnia Codexowi aktualne sceny, węzły, zasoby, Output i Debugger.
 
-Zasada ponownego uruchamiania
+4. Jak zacząć pracę nad tym projektem
+------------------------------------
+Po uruchomieniu Codex w katalogu projektu można wkleić:
+
+Pracuj w aktualnym projekcie Godot. Najpierw przeczytaj AGENTS.md, sprawdź stan
+Git oraz aktywną scenę przez Godot AI MCP. Nie zmieniaj plików, dopóki nie
+potwierdzisz, że połączenie MCP działa.
+
+Następnie opisz konkretne zadanie, na przykład:
+
+- Sprawdź błędy w Output i Debugger, ale jeszcze ich nie naprawiaj.
+- Wyjaśnij strukturę aktualnej sceny i powiązane skrypty.
+- Dodaj wskazany element interfejsu, uruchom grę i napraw błędy.
+- Zdiagnozuj problem z ruchem jednostki bez zmieniania mechaniki.
+- Zapisz scenę, uruchom projekt i sprawdź rezultat.
+
+Codex powinien korzystać z Godot AI MCP do operacji na scenach, węzłach,
+sygnałach, zasobach, stanie edytora i testach runtime. Reguły zapisane w
+AGENTS.md obowiązują każdą osobę uruchamiającą Codex w tym repozytorium.
+
+5. Sprawdzenie połączenia MCP
 -----------------------------
-Skrypt nie powinien ponownie instalować poprawnie wykrytych narzędzi. W obecnej
-wersji dotyczy to uv i Codex CLI. Nie dotyczy to jeszcze pluginu, konfiguracji
-MCP, launchera ani logowania — dla nich użyj -SkipLaunch i zachowaj backup przed
-uruchomieniem.
+W PowerShell można sprawdzić zarejestrowane serwery:
 
-Dane uwierzytelniające
-----------------------
-Nie zapisuj tokenów, haseł ani plików poświadczeń w katalogu projektu. Logowanie
-Codex powinno korzystać wyłącznie z oficjalnego mechanizmu "codex login" i
-lokalnego magazynu poświadczeń użytkownika Windows.
+codex mcp list
+
+Na liście powinien znajdować się wpis godot-ai z adresem:
+
+http://127.0.0.1:8000/mcp
+
+W nowej sesji Codex poproś o odczytanie aktywnej sceny lub stanu edytora.
+Jeśli Codex widzi projekt, wersję Godota i bieżącą scenę, połączenie działa.
+
+6. Gdy MCP nie działa
+---------------------
+Sprawdź kolejno:
+
+1. Czy projekt jest otwarty w Godot.
+2. Czy plugin Godot AI jest włączony.
+3. Czy dock pluginu pokazuje działający serwer.
+4. Czy port 8000 nie jest zajęty lub blokowany.
+5. Czy "codex mcp list" zawiera godot-ai.
+6. Czy Codex został ponownie uruchomiony po konfiguracji MCP.
+7. Czy uruchomiono Codex w katalogu właściwego projektu.
+
+Ponowna rejestracja MCP:
+
+codex mcp remove godot-ai
+codex mcp add godot-ai --url http://127.0.0.1:8000/mcp
+
+Następnie zamknij i ponownie uruchom Codex.
+
+7. Ograniczenia obecnego instalatora
+------------------------------------
+Instalator działa na Windows, ale nie jest jeszcze w pełni idempotentny:
+
+- nie instaluje Godota;
+- zawsze pobiera i zastępuje istniejący plugin;
+- zawsze usuwa i ponownie dodaje wpis MCP;
+- nadpisuje Start-Godot-Codex.ps1;
+- bez -SkipLaunch uruchamia codex login;
+- pobiera plugin z gałęzi main bez przypiętej wersji i kontroli SHA-256;
+- nie wykonuje pełnego testu połączenia po instalacji.
+
+Przed kolejnym wydaniem warto dodać wykrywanie wersji pluginu, sprawdzanie
+istniejącej konfiguracji MCP i logowania, instalację Godota, tryb -CheckOnly
+oraz końcowy test działania.
+
+8. Bezpieczeństwo
+-----------------
+Nie zapisuj tokenów, haseł ani plików poświadczeń w projekcie. Używaj wyłącznie
+oficjalnego "codex login" i lokalnego magazynu poświadczeń użytkownika.
+Katalogi .godot oraz .godot-mcp-backup-* powinny pozostać w .gitignore.
