@@ -26,13 +26,13 @@ var _highlight_markers: Dictionary[Vector2i, MeshInstance3D] = {}
 var _highlighted_cells: Dictionary[Vector2i, int] = {}
 var _highlight_material: StandardMaterial3D
 var _terrain_features: Array[Vector4] = []
-var _terrain_strokes: Array[Dictionary] = []
+var _terrain_surface: TerrainMapSurface
 var _use_procedural_features: bool = true
 var _terrain_material: ShaderMaterial
 var _grid_visible: bool = false
 
 func _ready() -> void:
-	_load_selected_terrain()
+	await _load_selected_terrain()
 	_initialize_terrain_features()
 	_build_grid()
 
@@ -44,12 +44,15 @@ func _load_selected_terrain() -> void:
 	if catalog == null:
 		return
 	var data: Dictionary = catalog.load_map(session.selected_map_id)
+	if data.is_empty():
+		return
 	_use_procedural_features = false
-	var raw_strokes: Variant = data.get("terrain_strokes", [])
-	if raw_strokes is Array:
-		for value: Variant in raw_strokes:
-			if value is Dictionary:
-				_terrain_strokes.append((value as Dictionary).duplicate(true))
+	_terrain_surface = TerrainMapSurface.new()
+	_terrain_surface.name = "TerrainMapSurface"
+	add_child(_terrain_surface)
+	var terrain_directory := str(data.get("terrain_directory", ""))
+	var legacy_strokes: Array = data.get("terrain_strokes", []) as Array
+	await _terrain_surface.setup(null, terrain_directory, legacy_strokes)
 
 func block_cell(cell: Vector2i) -> void:
 	if is_inside_grid(cell):
@@ -94,6 +97,8 @@ func get_units() -> Array[TacticalUnit]:
 
 func _build_grid() -> void:
 	_highlight_material = _create_highlight_material()
+	if _terrain_surface != null:
+		return
 	var terrain_mesh := _create_terrain_mesh()
 	var terrain := MeshInstance3D.new()
 	terrain.name = "GrassTerrain"
@@ -314,6 +319,8 @@ func is_inside_grid(cell: Vector2i) -> bool:
 	return cell.x >= 0 and cell.x < GRID_WIDTH and cell.y >= 0 and cell.y < GRID_HEIGHT
 
 func terrain_height(world_x: float, world_z: float) -> float:
+	if _terrain_surface != null:
+		return _terrain_surface.get_height(world_x, world_z)
 	var result: float = 0.018 * sin(world_x * 0.41 + world_z * 0.19)
 	result += 0.012 * cos(world_x * 0.23 - world_z * 0.37)
 	for feature: Vector4 in _terrain_features:
@@ -323,20 +330,6 @@ func terrain_height(world_x: float, world_z: float) -> float:
 		var influence: float = 1.0 - distance / feature.z
 		influence = influence * influence * (3.0 - 2.0 * influence)
 		result += feature.w * influence
-	var base_height: float = result
-	for stroke: Dictionary in _terrain_strokes:
-		var center := Vector2(float(stroke.get("x", 0.0)), float(stroke.get("z", 0.0)))
-		var radius := maxf(0.1, float(stroke.get("radius", 1.0)))
-		var stroke_distance := Vector2(world_x, world_z).distance_to(center)
-		if stroke_distance >= radius:
-			continue
-		var stroke_influence: float = 1.0 - stroke_distance / radius
-		stroke_influence = stroke_influence * stroke_influence * (3.0 - 2.0 * stroke_influence)
-		var strength := float(stroke.get("strength", 0.5))
-		match str(stroke.get("operation", "raise")):
-			"raise": result += strength * stroke_influence
-			"lower": result -= strength * stroke_influence
-			"smooth": result = lerpf(result, base_height, clampf(strength * 0.35 * stroke_influence, 0.0, 1.0))
 	return result
 
 func _initialize_terrain_features() -> void:

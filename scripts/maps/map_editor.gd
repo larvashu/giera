@@ -20,26 +20,22 @@ const TOOL_LABELS: Array[String] = [
 	"Krzak", "Trawa I", "Trawa II", "Gumka", "Start P1", "Start P2",
 	"Teren: podnies", "Teren: obniz", "Teren: wyrownaj"
 ]
-const TERRAIN_TEXTURE: Texture2D = preload("res://assets/textures/terrain/realistic_grass.png")
-
 var objects: Array[Dictionary] = []
 var player_spawns: Array[Dictionary] = [{"x": 78, "z": 9}, {"x": 81, "z": 9}]
 var enemy_spawns: Array[Dictionary] = [{"x": 78, "z": 180}, {"x": 81, "z": 180}]
-var terrain_strokes: Array[Dictionary] = []
 var active_tool: String = "purple_tree_1"
 var brush_radius: float = 6.0
 var brush_strength: float = 0.65
 var _object_nodes: Array[Node3D] = []
 var _dragging_camera: bool = false
 var _last_mouse_position: Vector2
-var _terrain_rebuild_pending: bool = false
 var _last_action_msec: int = 0
 
 @onready var canvas: Control = %MapCanvas
 var _viewport_container: SubViewportContainer
 var _viewport: SubViewport
 var _world: Node3D
-var _terrain: MeshInstance3D
+var _terrain_surface: TerrainMapSurface
 var _objects_root: Node3D
 var _markers_root: Node3D
 var _camera: Camera3D
@@ -51,11 +47,11 @@ var _brush_label: Label
 func _ready() -> void:
 	_build_sidebar_controls()
 	_build_3d_view()
+	await _terrain_surface.setup(_camera)
 	_connect_ui()
-	_rebuild_terrain()
 	_rebuild_objects()
 	_update_markers()
-	_update_status("Widok 3D gotowy")
+	_update_status("Terrain3D gotowy")
 
 func _build_sidebar_controls() -> void:
 	for index: int in range(TOOLS.size()):
@@ -91,6 +87,7 @@ func _build_3d_view() -> void:
 	canvas.add_child(_viewport_container)
 	_viewport = SubViewport.new()
 	_viewport.name = "MapViewport"
+	_viewport.own_world_3d = true
 	_viewport.handle_input_locally = false
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	_viewport.msaa_3d = Viewport.MSAA_4X
@@ -104,9 +101,6 @@ func _build_3d_view() -> void:
 	_markers_root = Node3D.new()
 	_markers_root.name = "Markers"
 	_world.add_child(_markers_root)
-	_terrain = MeshInstance3D.new()
-	_terrain.name = "EditableTerrain"
-	_world.add_child(_terrain)
 	_camera = Camera3D.new()
 	_camera.name = "EditorCamera"
 	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -115,6 +109,9 @@ func _build_3d_view() -> void:
 	_camera.rotation_degrees = Vector3(-56.0, 0.0, 0.0)
 	_camera.current = true
 	_world.add_child(_camera)
+	_terrain_surface = TerrainMapSurface.new()
+	_terrain_surface.name = "TerrainSurface"
+	_world.add_child(_terrain_surface)
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-55.0, -32.0, 0.0)
 	sun.shadow_enabled = true
@@ -202,15 +199,11 @@ func _pan_camera(delta: Vector2) -> void:
 func _screen_to_map(screen_position: Vector2) -> Variant:
 	var origin := _camera.project_ray_origin(screen_position)
 	var direction := _camera.project_ray_normal(screen_position)
-	if absf(direction.y) < 0.0001:
+	var hit := _terrain_surface.get_intersection(origin, direction)
+	if is_nan(hit.x) or is_nan(hit.y) or is_nan(hit.z):
 		return null
-	var distance: float = -origin.y / direction.y
-	if distance < 0.0:
-		return null
-	var hit := origin + direction * distance
 	if hit.x < -0.5 or hit.z < -0.5 or hit.x >= GRID_SIZE.x - 0.5 or hit.z >= GRID_SIZE.y - 0.5:
 		return null
-	hit.y = terrain_height(hit.x, hit.z)
 	return hit
 
 func _update_cursor(screen_position: Vector2) -> void:
@@ -228,14 +221,8 @@ func _apply_tool(world_position: Vector3) -> void:
 	var cell := Vector2i(roundi(world_position.x), roundi(world_position.z))
 	if active_tool.begins_with("terrain_"):
 		var operation := active_tool.trim_prefix("terrain_")
-		terrain_strokes.append({
-			"x": world_position.x,
-			"z": world_position.z,
-			"radius": brush_radius,
-			"strength": brush_strength,
-			"operation": operation,
-		})
-		_schedule_terrain_rebuild()
+		_terrain_surface.apply_brush(world_position, brush_radius, brush_strength, operation)
+		_reposition_scene_content()
 	elif active_tool == "erase":
 		_erase_nearest(world_position)
 	elif active_tool == "player_spawn":
@@ -253,18 +240,7 @@ func _apply_tool(world_position: Vector3) -> void:
 			"scale": 1.0,
 		})
 		_rebuild_objects()
-	_update_status("Obiektow: %d / ruchow terenu: %d" % [objects.size(), terrain_strokes.size()])
-
-func _schedule_terrain_rebuild() -> void:
-	if _terrain_rebuild_pending:
-		return
-	_terrain_rebuild_pending = true
-	call_deferred("_finish_terrain_rebuild")
-
-func _finish_terrain_rebuild() -> void:
-	_terrain_rebuild_pending = false
-	_rebuild_terrain()
-	_reposition_scene_content()
+	_update_status("Obiektow: %d" % objects.size())
 
 func _erase_nearest(world_position: Vector3) -> void:
 	var best_index: int = -1
@@ -285,63 +261,7 @@ func _set_spawn(spawns: Array[Dictionary], cell: Vector2i) -> void:
 	spawns.append({"x": cell.x, "z": cell.y})
 
 func terrain_height(world_x: float, world_z: float) -> float:
-	var height: float = _base_terrain_height(world_x, world_z)
-	for stroke: Dictionary in terrain_strokes:
-		var center := Vector2(float(stroke.get("x", 0.0)), float(stroke.get("z", 0.0)))
-		var radius := maxf(0.1, float(stroke.get("radius", 1.0)))
-		var distance := Vector2(world_x, world_z).distance_to(center)
-		if distance >= radius:
-			continue
-		var influence: float = 1.0 - distance / radius
-		influence = influence * influence * (3.0 - 2.0 * influence)
-		var strength := float(stroke.get("strength", 0.5))
-		match str(stroke.get("operation", "raise")):
-			"raise": height += strength * influence
-			"lower": height -= strength * influence
-			"smooth": height = lerpf(height, _base_terrain_height(world_x, world_z), clampf(strength * 0.35 * influence, 0.0, 1.0))
-	return height
-
-func _base_terrain_height(world_x: float, world_z: float) -> float:
-	return 0.018 * sin(world_x * 0.41 + world_z * 0.19) + 0.012 * cos(world_x * 0.23 - world_z * 0.37)
-
-func _rebuild_terrain() -> void:
-	var vertices := PackedVector3Array()
-	var normals := PackedVector3Array()
-	var uvs := PackedVector2Array()
-	const STEP := 2
-	for z: int in range(0, GRID_SIZE.y, STEP):
-		for x: int in range(0, GRID_SIZE.x, STEP):
-			var x0: float = float(x) - 0.5
-			var x1: float = minf(float(x + STEP) - 0.5, float(GRID_SIZE.x) - 0.5)
-			var z0: float = float(z) - 0.5
-			var z1: float = minf(float(z + STEP) - 0.5, float(GRID_SIZE.y) - 0.5)
-			_append_terrain_vertex(vertices, normals, uvs, x0, z0)
-			_append_terrain_vertex(vertices, normals, uvs, x1, z0)
-			_append_terrain_vertex(vertices, normals, uvs, x1, z1)
-			_append_terrain_vertex(vertices, normals, uvs, x0, z0)
-			_append_terrain_vertex(vertices, normals, uvs, x1, z1)
-			_append_terrain_vertex(vertices, normals, uvs, x0, z1)
-	var arrays: Array = []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = vertices
-	arrays[Mesh.ARRAY_NORMAL] = normals
-	arrays[Mesh.ARRAY_TEX_UV] = uvs
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	_terrain.mesh = mesh
-	var terrain_material := StandardMaterial3D.new()
-	terrain_material.albedo_texture = TERRAIN_TEXTURE
-	terrain_material.uv1_scale = Vector3(40.0, 48.0, 1.0)
-	terrain_material.albedo_color = Color(0.48, 0.72, 0.42)
-	terrain_material.roughness = 0.96
-	_terrain.material_override = terrain_material
-
-func _append_terrain_vertex(vertices: PackedVector3Array, normals: PackedVector3Array, uvs: PackedVector2Array, x: float, z: float) -> void:
-	vertices.append(Vector3(x, terrain_height(x, z), z))
-	var dx: float = terrain_height(x - 0.25, z) - terrain_height(x + 0.25, z)
-	var dz: float = terrain_height(x, z - 0.25) - terrain_height(x, z + 0.25)
-	normals.append(Vector3(dx, 0.5, dz).normalized())
-	uvs.append(Vector2((x + 0.5) / float(GRID_SIZE.x), (z + 0.5) / float(GRID_SIZE.y)))
+	return _terrain_surface.get_height(world_x, world_z)
 
 func _rebuild_objects() -> void:
 	for child: Node in _objects_root.get_children():
@@ -402,8 +322,7 @@ func _create_spawn_marker(data: Dictionary, color: Color) -> void:
 
 func _clear_map() -> void:
 	objects.clear()
-	terrain_strokes.clear()
-	_rebuild_terrain()
+	_terrain_surface.clear_height()
 	_rebuild_objects()
 	_update_markers()
 	_update_status("Mapa wyczyszczona")
@@ -413,13 +332,16 @@ func _save() -> void:
 	if map_name.is_empty():
 		_update_status("Podaj nazwe mapy.")
 		return
+	var safe_name := map_name.to_lower().replace(" ", "_")
+	var terrain_directory := "user://maps/terrain/" + safe_name
+	_terrain_surface.save_to_directory(terrain_directory)
 	var path: String = get_node("/root/MapCatalog").save_map({
-		"version": 2,
+		"version": 3,
 		"name": map_name,
 		"objects": objects,
 		"player_spawns": player_spawns,
 		"enemy_spawns": enemy_spawns,
-		"terrain_strokes": terrain_strokes,
+		"terrain_directory": terrain_directory,
 	})
 	_update_status("Zapisano: " + path)
 

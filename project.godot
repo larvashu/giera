@@ -33,7 +33,7 @@ window/stretch/mode="canvas_items"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/godot_ai/plugin.cfg")
+enabled=["res://addons/godot_ai/plugin.cfg", "res://addons/terrain_3d/plugin.cfg"]
 
 [physics]
 
