@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="CharacterDefinition" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/character_definition.gd" id="1_def"]
+[ext_resource type="PackedScene" path="res://scenes/units/unit.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_def")
+character_id = &"ogre"
+display_name = "Ogr"
+description = "Ciezki wojownik"
+role_name = "Ciezki wojownik"
+team_slot_cost = 2
+max_health = 24
+max_action_points = 6
+initiative = 6
+movement_range = 6
+scene = ExtResource("2_scene")
+visual_color = Color(0.5176470588235295, 0.8, 0.08627450980392157, 1)
+visual_scale = 1.25

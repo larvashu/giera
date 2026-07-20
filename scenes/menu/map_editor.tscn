@@ -1,0 +1,83 @@
+[gd_scene load_steps=4 format=3]
+[ext_resource type="Script" path="res://scripts/maps/map_editor.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/ui/tactical_ui_backdrop.png" id="2"]
+[ext_resource type="Theme" path="res://assets/ui/tactical_theme.tres" id="3"]
+[node name="MapEditor" type="Control"]
+layout_mode=3
+anchors_preset=15
+anchor_right=1.0
+anchor_bottom=1.0
+grow_horizontal=2
+grow_vertical=2
+theme=ExtResource("3")
+script=ExtResource("1")
+[node name="Background" type="TextureRect" parent="."]
+layout_mode=1
+anchors_preset=15
+anchor_right=1.0
+anchor_bottom=1.0
+grow_horizontal=2
+grow_vertical=2
+texture=ExtResource("2")
+expand_mode=1
+stretch_mode=6
+mouse_filter=2
+[node name="Root" type="HBoxContainer" parent="."]
+layout_mode=1
+anchors_preset=15
+anchor_right=1.0
+anchor_bottom=1.0
+offset_left=30.0
+offset_top=30.0
+offset_right=-30.0
+offset_bottom=-30.0
+theme_override_constants/separation=22
+[node name="Sidebar" type="PanelContainer" parent="Root"]
+custom_minimum_size=Vector2(350,0)
+layout_mode=2
+[node name="VBox" type="VBoxContainer" parent="Root/Sidebar"]
+layout_mode=2
+theme_override_constants/separation=14
+[node name="Title" type="Label" parent="Root/Sidebar/VBox"]
+layout_mode=2
+text="EDYTOR MAP"
+theme_override_font_sizes/font_size=28
+horizontal_alignment=1
+[node name="Hint" type="Label" parent="Root/Sidebar/VBox"]
+layout_mode=2
+text="Kliknij na mapie, aby umiescic obiekt.\nUstaw po dwa pola startowe dla obu druzyn."
+autowrap_mode=2
+[node name="NameEdit" type="LineEdit" parent="Root/Sidebar/VBox"]
+unique_name_in_owner=true
+layout_mode=2
+placeholder_text="Nazwa mapy"
+[node name="ToolOption" type="OptionButton" parent="Root/Sidebar/VBox"]
+unique_name_in_owner=true
+layout_mode=2
+[node name="StatusLabel" type="Label" parent="Root/Sidebar/VBox"]
+unique_name_in_owner=true
+layout_mode=2
+text="Obiektow: 0"
+autowrap_mode=2
+[node name="Spacer" type="Control" parent="Root/Sidebar/VBox"]
+layout_mode=2
+size_flags_vertical=3
+[node name="SaveButton" type="Button" parent="Root/Sidebar/VBox"]
+unique_name_in_owner=true
+layout_mode=2
+text="Zapisz mape"
+[node name="ClearButton" type="Button" parent="Root/Sidebar/VBox"]
+unique_name_in_owner=true
+layout_mode=2
+text="Wyczysc"
+[node name="BackButton" type="Button" parent="Root/Sidebar/VBox"]
+unique_name_in_owner=true
+layout_mode=2
+text="Powrot"
+[node name="MapPanel" type="PanelContainer" parent="Root"]
+layout_mode=2
+size_flags_horizontal=3
+[node name="MapCanvas" type="Control" parent="Root/MapPanel"]
+unique_name_in_owner=true
+layout_mode=2
+mouse_default_cursor_shape=2

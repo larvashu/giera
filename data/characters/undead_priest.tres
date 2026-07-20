@@ -1,0 +1,23 @@
+[gd_resource type="Resource" script_class="CharacterDefinition" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/character_definition.gd" id="1_def"]
+[ext_resource type="PackedScene" path="res://scenes/units/unit.tscn" id="2_scene"]
+[ext_resource type="PackedScene" path="res://assets/models/characters/undead_priest.glb" id="3_model"]
+
+[resource]
+script = ExtResource("1_def")
+character_id = &"undead_priest"
+display_name = "Nieumarly kaplan"
+description = "Kaplan zarazy wspierajacy sojusznikow nekrotyczna moca."
+role_name = "Nekromancja i wsparcie"
+team_slot_cost = 1
+max_health = 12
+max_action_points = 6
+initiative = 9
+movement_range = 6
+scene = ExtResource("2_scene")
+visual_scene = ExtResource("3_model")
+visual_color = Color(0.55, 0.82, 0.45, 1)
+visual_scale = 0.72
+visual_offset = Vector3(0, 0.54, 0)
+visual_rotation_degrees = Vector3(0, 180, 0)

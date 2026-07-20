@@ -1,0 +1,99 @@
+[gd_scene format=3 uid="uid://clbujichvi147"]
+
+[ext_resource type="Script" uid="uid://catkql8q6r2fa" path="res://scripts/menu/main_menu.gd" id="1"]
+[ext_resource type="Texture2D" uid="uid://d06t22kg0nbpe" path="res://assets/ui/tactical_ui_backdrop.png" id="2_bg"]
+[ext_resource type="Theme" uid="uid://bjwhbu6ga76f1" path="res://assets/ui/tactical_theme.tres" id="3_theme"]
+
+[node name="MainMenu" type="Control" unique_id=203835402]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme = ExtResource("3_theme")
+script = ExtResource("1")
+
+[node name="Background" type="TextureRect" parent="." unique_id=137090325]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_bg")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="BackdropTint" type="ColorRect" parent="." unique_id=1164885828]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.015, 0.025, 0.032, 0.2)
+
+[node name="Center" type="CenterContainer" parent="." unique_id=608795496]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Panel" type="PanelContainer" parent="Center" unique_id=1474478381]
+custom_minimum_size = Vector2(460, 430)
+layout_mode = 2
+
+[node name="VBox" type="VBoxContainer" parent="Center/Panel" unique_id=1556523333]
+layout_mode = 2
+theme_override_constants/separation = 22
+alignment = 1
+
+[node name="Title" type="Label" parent="Center/Panel/VBox" unique_id=327186363]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.25, 0.9, 1, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.85)
+theme_override_constants/shadow_offset_x = 3
+theme_override_constants/shadow_offset_y = 3
+theme_override_font_sizes/font_size = 38
+text = "GIERA"
+horizontal_alignment = 1
+
+[node name="PlayButton" type="Button" parent="Center/Panel/VBox" unique_id=1735536778]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Graj"
+
+[node name="TeamsButton" type="Button" parent="Center/Panel/VBox" unique_id=876560658]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Druzyny"
+
+[node name="CharactersButton" type="Button" parent="Center/Panel/VBox" unique_id=394032912]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Postacie"
+
+[node name="MapEditorButton" type="Button" parent="Center/Panel/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Edytor map"
+
+[node name="QuitButton" type="Button" parent="Center/Panel/VBox" unique_id=108382203]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(340, 64)
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Wyjdz"

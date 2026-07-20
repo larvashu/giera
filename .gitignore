@@ -1,0 +1,12 @@
+# Godot 4+ specific ignores
+.godot/
+.godot-mcp-backup-*/
+/android/
+
+# Local exports and editor/OS files
+/build/
+/exports/
+*.tmp
+*.log
+.DS_Store
+Thumbs.db

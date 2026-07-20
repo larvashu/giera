@@ -1,0 +1,122 @@
+[gd_scene load_steps=4 format=3]
+[ext_resource type="Script" path="res://scripts/menu/hotseat_setup.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/ui/tactical_ui_backdrop.png" id="2_bg"]
+[ext_resource type="Theme" path="res://assets/ui/tactical_theme.tres" id="3_theme"]
+[node name="HotseatSetup" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+theme = ExtResource("3_theme")
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_bg")
+expand_mode = 1
+stretch_mode = 6
+[node name="BackdropTint" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.01,0.02,0.025,0.28)
+[node name="Root" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 50.0
+offset_top = 35.0
+offset_right = -50.0
+offset_bottom = -35.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 18
+[node name="Title" type="Label" parent="Root"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+text = "Hotseat — 2 graczy"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.89,0.72,0.34,1)
+theme_override_colors/font_shadow_color = Color(0,0,0,0.9)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+[node name="MapRow" type="HBoxContainer" parent="Root"]
+layout_mode = 2
+[node name="MapLabel" type="Label" parent="Root/MapRow"]
+layout_mode = 2
+text = "Mapa:"
+[node name="MapOption" type="OptionButton" parent="Root/MapRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Players" type="HBoxContainer" parent="Root"]
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 30
+[node name="PlayerOne" type="VBoxContainer" parent="Root/Players"]
+layout_mode = 2
+size_flags_horizontal = 3
+[node name="Header" type="Label" parent="Root/Players/PlayerOne"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Gracz 1"
+[node name="PlayerOneName" type="LineEdit" parent="Root/Players/PlayerOne"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Gracz 1"
+[node name="PlayerOneTeam" type="OptionButton" parent="Root/Players/PlayerOne"]
+unique_name_in_owner = true
+layout_mode = 2
+[node name="PlayerOnePreview" type="Label" parent="Root/Players/PlayerOne"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 2
+[node name="PlayerTwo" type="VBoxContainer" parent="Root/Players"]
+layout_mode = 2
+size_flags_horizontal = 3
+[node name="Header" type="Label" parent="Root/Players/PlayerTwo"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Gracz 2"
+[node name="PlayerTwoName" type="LineEdit" parent="Root/Players/PlayerTwo"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Gracz 2"
+[node name="PlayerTwoTeam" type="OptionButton" parent="Root/Players/PlayerTwo"]
+unique_name_in_owner = true
+layout_mode = 2
+[node name="PlayerTwoPreview" type="Label" parent="Root/Players/PlayerTwo"]
+unique_name_in_owner = true
+layout_mode = 2
+autowrap_mode = 2
+[node name="StatusLabel" type="Label" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 2
+horizontal_alignment = 1
+[node name="Buttons" type="HBoxContainer" parent="Root"]
+layout_mode = 2
+alignment = 1
+[node name="BackButton" type="Button" parent="Root/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(180,52)
+layout_mode = 2
+text = "Powrot"
+[node name="StartButton" type="Button" parent="Root/Buttons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(240,52)
+layout_mode = 2
+text = "Rozpocznij gre"
+disabled = true

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="CharacterDefinition" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/character_definition.gd" id="1_def"]
+[ext_resource type="PackedScene" path="res://scenes/units/unit.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_def")
+character_id = &"golem"
+display_name = "Golem"
+description = "Ekstremalnie wytrzymaly obronca"
+role_name = "Ekstremalnie wytrzymaly obronca"
+team_slot_cost = 4
+max_health = 45
+max_action_points = 6
+initiative = 3
+movement_range = 6
+scene = ExtResource("2_scene")
+visual_color = Color(0.39215686274509803, 0.4549019607843137, 0.5450980392156862, 1)
+visual_scale = 1.6

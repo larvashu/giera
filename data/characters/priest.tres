@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="CharacterDefinition" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/character_definition.gd" id="1_def"]
+[ext_resource type="PackedScene" path="res://scenes/units/unit.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_def")
+character_id = &"priest"
+display_name = "Kaplan"
+description = "Leczenie i wsparcie"
+role_name = "Leczenie i wsparcie"
+team_slot_cost = 1
+max_health = 11
+max_action_points = 6
+initiative = 8
+movement_range = 6
+scene = ExtResource("2_scene")
+visual_color = Color(0.9725490196078431, 0.9803921568627451, 0.9882352941176471, 1)
+visual_scale = 1

@@ -1,0 +1,121 @@
+[gd_scene load_steps=4 format=3]
+[ext_resource type="Script" path="res://scripts/menu/team_builder.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/ui/tactical_ui_backdrop.png" id="2_bg"]
+[ext_resource type="Theme" path="res://assets/ui/tactical_theme.tres" id="3_theme"]
+[node name="TeamBuilder" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+theme = ExtResource("3_theme")
+[node name="Background" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_bg")
+expand_mode = 1
+stretch_mode = 6
+[node name="BackdropTint" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.01,0.02,0.025,0.28)
+[node name="Root" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 20.0
+offset_right = -24.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 12
+[node name="Title" type="Label" parent="Root"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Kreator druzyn"
+theme_override_colors/font_color = Color(0.89,0.72,0.34,1)
+theme_override_colors/font_shadow_color = Color(0,0,0,0.9)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+[node name="Columns" type="HSplitContainer" parent="Root"]
+layout_mode = 2
+size_flags_vertical = 3
+split_offset = 560
+[node name="Available" type="VBoxContainer" parent="Root/Columns"]
+layout_mode = 2
+[node name="Label" type="Label" parent="Root/Columns/Available"]
+layout_mode = 2
+text = "Dostepne postacie"
+[node name="Scroll" type="ScrollContainer" parent="Root/Columns/Available"]
+layout_mode = 2
+size_flags_vertical = 3
+[node name="CharacterList" type="VBoxContainer" parent="Root/Columns/Available/Scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+[node name="Current" type="VBoxContainer" parent="Root/Columns"]
+layout_mode = 2
+[node name="TeamNameEdit" type="LineEdit" parent="Root/Columns/Current"]
+unique_name_in_owner = true
+layout_mode = 2
+placeholder_text = "Nazwa druzyny"
+[node name="SlotsLabel" type="Label" parent="Root/Columns/Current"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Zajete miejsca: 0 / 5"
+[node name="SelectedScroll" type="ScrollContainer" parent="Root/Columns/Current"]
+layout_mode = 2
+custom_minimum_size = Vector2(0,150)
+[node name="SelectedList" type="VBoxContainer" parent="Root/Columns/Current/SelectedScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+[node name="Buttons" type="HBoxContainer" parent="Root/Columns/Current"]
+layout_mode = 2
+[node name="SaveButton" type="Button" parent="Root/Columns/Current/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Zapisz druzyne"
+[node name="ClearButton" type="Button" parent="Root/Columns/Current/Buttons"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Wyczysc"
+[node name="StatusLabel" type="Label" parent="Root/Columns/Current"]
+unique_name_in_owner = true
+layout_mode = 2
+[node name="SavedTitle" type="Label" parent="Root"]
+layout_mode = 2
+text = "Zapisane druzyny"
+[node name="SavedScroll" type="ScrollContainer" parent="Root"]
+layout_mode = 2
+custom_minimum_size = Vector2(0,150)
+[node name="SavedList" type="VBoxContainer" parent="Root/SavedScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+[node name="CharactersButton" type="Button" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Edytor postaci"
+
+[node name="BackButton" type="Button" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Powrot do menu glownego"
+[node name="DeleteDialog" type="ConfirmationDialog" parent="."]
+unique_name_in_owner = true
+title = "Potwierdzenie"

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="CharacterDefinition" load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/data/character_definition.gd" id="1_def"]
+[ext_resource type="PackedScene" path="res://scenes/units/unit.tscn" id="2_scene"]
+
+[resource]
+script = ExtResource("1_def")
+character_id = &"dragon"
+display_name = "Smok"
+description = "Samodzielna jednostka elitarna"
+role_name = "Samodzielna jednostka elitarna"
+team_slot_cost = 5
+max_health = 60
+max_action_points = 6
+initiative = 7
+movement_range = 6
+scene = ExtResource("2_scene")
+visual_color = Color(0.8627450980392157, 0.14901960784313725, 0.14901960784313725, 1)
+visual_scale = 1.85

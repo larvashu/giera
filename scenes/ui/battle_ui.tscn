@@ -1,0 +1,151 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/battle_ui.gd" id="1_ui"]
+[ext_resource type="Theme" path="res://assets/ui/tactical_theme.tres" id="2_theme"]
+
+[node name="BattleUI" type="CanvasLayer"]
+script = ExtResource("1_ui")
+
+[node name="InitiativeBar" type="PanelContainer" parent="."]
+theme = ExtResource("2_theme")
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 94.0
+grow_horizontal = 2
+
+[node name="Margin" type="MarginContainer" parent="InitiativeBar"]
+theme_override_constants/margin_left = 20
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 20
+theme_override_constants/margin_bottom = 10
+
+[node name="Scroll" type="ScrollContainer" parent="InitiativeBar/Margin"]
+layout_mode = 2
+horizontal_scroll_mode = 2
+vertical_scroll_mode = 0
+
+[node name="InitiativeCards" type="HBoxContainer" parent="InitiativeBar/Margin/Scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="StatusPanel" type="PanelContainer" parent="."]
+theme = ExtResource("2_theme")
+offset_left = 24.0
+offset_top = 112.0
+offset_right = 390.0
+offset_bottom = 222.0
+
+[node name="Margin" type="MarginContainer" parent="StatusPanel"]
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 10
+
+[node name="VBox" type="VBoxContainer" parent="StatusPanel/Margin"]
+theme_override_constants/separation = 3
+
+[node name="RoundLabel" type="Label" parent="StatusPanel/Margin/VBox"]
+unique_name_in_owner = true
+theme_override_font_sizes/font_size = 20
+text = "Runda: 1"
+
+[node name="ActiveLabel" type="Label" parent="StatusPanel/Margin/VBox"]
+unique_name_in_owner = true
+theme_override_font_sizes/font_size = 18
+text = "Aktywna jednostka: -"
+
+[node name="PhaseLabel" type="Label" parent="StatusPanel/Margin/VBox"]
+unique_name_in_owner = true
+theme_override_colors/font_color = Color(0.3, 0.9, 1, 1)
+text = "Rozpoczecie walki"
+
+[node name="DetailsPanel" type="PanelContainer" parent="."]
+theme = ExtResource("2_theme")
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -306.0
+offset_top = 112.0
+offset_right = -24.0
+offset_bottom = 330.0
+grow_horizontal = 0
+
+[node name="Margin" type="MarginContainer" parent="DetailsPanel"]
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 14
+
+[node name="VBox" type="VBoxContainer" parent="DetailsPanel/Margin"]
+theme_override_constants/separation = 7
+
+[node name="DetailsLabel" type="Label" parent="DetailsPanel/Margin/VBox"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(250, 136)
+theme_override_font_sizes/font_size = 17
+text = "Brak zaznaczonej jednostki"
+
+[node name="APRow" type="HBoxContainer" parent="DetailsPanel/Margin/VBox"]
+theme_override_constants/separation = 10
+
+[node name="APCaption" type="Label" parent="DetailsPanel/Margin/VBox/APRow"]
+theme_override_font_sizes/font_size = 16
+text = "PA"
+
+[node name="ActionPointDots" type="HBoxContainer" parent="DetailsPanel/Margin/VBox/APRow"]
+unique_name_in_owner = true
+theme_override_constants/separation = 6
+
+[node name="SkillBar" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+theme = ExtResource("2_theme")
+anchors_preset = 12
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -480.0
+offset_top = -112.0
+offset_right = 480.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="Margin" type="MarginContainer" parent="SkillBar"]
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="VBox" type="VBoxContainer" parent="SkillBar/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 5
+
+[node name="SkillCaption" type="Label" parent="SkillBar/Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Umiejetnosci aktywnej postaci"
+
+[node name="SkillButtons" type="HBoxContainer" parent="SkillBar/Margin/VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="EndTurnButton" type="Button" parent="."]
+unique_name_in_owner = true
+theme = ExtResource("2_theme")
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -224.0
+offset_top = -82.0
+offset_right = -24.0
+offset_bottom = -26.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 19
+text = "Zakoncz ture"

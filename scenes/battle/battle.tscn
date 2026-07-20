@@ -1,0 +1,69 @@
+[gd_scene format=3 uid="uid://clu8xpnt6ksfp"]
+
+[ext_resource type="Script" uid="uid://ct68u3ptn87rb" path="res://scripts/battle/battle_manager.gd" id="1_battle"]
+[ext_resource type="Script" uid="uid://dxwi38fg4c1gb" path="res://scripts/battle/grid_manager.gd" id="2_grid"]
+[ext_resource type="Script" uid="uid://d3delslav12fg" path="res://scripts/environment/battle_atmosphere.gd" id="2_py4tk"]
+[ext_resource type="Script" uid="uid://c4wyf15wp517s" path="res://scripts/input/player_controller.gd" id="3_input"]
+[ext_resource type="Script" uid="uid://b7qrmuwhjgtt3" path="res://scripts/camera/tactical_camera.gd" id="4_camera"]
+[ext_resource type="Script" uid="uid://bb85xbksh1c01" path="res://scripts/battle/turn_manager.gd" id="5_turn"]
+[ext_resource type="PackedScene" path="res://scenes/ui/battle_ui.tscn" id="6_ui"]
+[ext_resource type="Script" uid="uid://b8ekphd5e7uda" path="res://scripts/battle/battle_decorator.gd" id="7_decorator"]
+[ext_resource type="Script" uid="uid://c8gx5t4g70d2i" path="res://scripts/environment/world_sector_streamer.gd" id="9_agsc7"]
+[ext_resource type="Script" uid="uid://bqyaux44nd00b" path="res://scripts/maps/map_runtime.gd" id="10_map"]
+[ext_resource type="Script" uid="uid://bpcdbulij456v" path="res://scripts/environment/camera_grass_streamer.gd" id="11_fisqk"]
+
+[sub_resource type="Environment" id="Environment_battle"]
+background_mode = 1
+background_color = Color(0.055, 0.075, 0.095, 1)
+ambient_light_source = 3
+ambient_light_color = Color(0.65, 0.72, 0.8, 1)
+ambient_light_energy = 0.65
+tonemap_mode = 2
+
+[node name="Battle" type="Node3D" unique_id=1465999888 node_paths=PackedStringArray("grid_manager", "turn_manager", "player_controller", "battle_ui", "tactical_camera")]
+script = ExtResource("1_battle")
+grid_manager = NodePath("GridManager")
+turn_manager = NodePath("TurnManager")
+player_controller = NodePath("PlayerController")
+battle_ui = NodePath("BattleUI")
+tactical_camera = NodePath("TacticalCamera")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=501585889]
+environment = SubResource("Environment_battle")
+script = ExtResource("2_py4tk")
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=1196093577]
+transform = Transform3D(0.81915206, 0.46984634, -0.32898995, 0, 0.57357645, 0.81915206, 0.57357645, -0.6710101, 0.46984634, 0, 0, 0)
+light_color = Color(1, 0.93, 0.82, 1)
+light_energy = 1.35
+shadow_enabled = true
+
+[node name="GridManager" type="Node3D" parent="." unique_id=1717896872]
+script = ExtResource("2_grid")
+
+[node name="BattleDecorator" type="Node3D" parent="." unique_id=1501443546 node_paths=PackedStringArray("grid_manager")]
+script = ExtResource("7_decorator")
+grid_manager = NodePath("../GridManager")
+
+[node name="MapRuntime" type="Node3D" parent="." unique_id=828158953 node_paths=PackedStringArray("grid_manager", "decorator")]
+script = ExtResource("10_map")
+grid_manager = NodePath("../GridManager")
+decorator = NodePath("../BattleDecorator")
+
+[node name="TurnManager" type="Node" parent="." unique_id=1638600428]
+script = ExtResource("5_turn")
+
+[node name="TacticalCamera" type="Camera3D" parent="." unique_id=1435746562]
+script = ExtResource("4_camera")
+
+[node name="PlayerController" type="Node" parent="." unique_id=392339946]
+script = ExtResource("3_input")
+camera_path = NodePath("../TacticalCamera")
+
+[node name="BattleUI" parent="." unique_id=710972896 instance=ExtResource("6_ui")]
+
+[node name="WorldSectorStreamer" type="Node3D" parent="." unique_id=1925865817]
+script = ExtResource("9_agsc7")
+
+[node name="CameraGrassStreamer" type="Node3D" parent="." unique_id=680929547]
+script = ExtResource("11_fisqk")
