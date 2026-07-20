@@ -26,6 +26,7 @@ func _ready() -> void:
 	battle_ui.end_turn_requested.connect(_on_end_turn_requested)
 	battle_ui.exit_to_main_menu_requested.connect(_on_exit_to_main_menu_requested)
 	battle_ui.initiative_unit_selected.connect(_on_unit_selected)
+	battle_ui.initiative_unit_selected.connect(_on_initiative_card_focus)
 	battle_ui.ability_selected.connect(_on_ability_selected)
 	tactical_camera.exploration_mode_changed.connect(_on_exploration_mode_changed)
 	tactical_camera.tactical_grid_toggle_requested.connect(_on_tactical_grid_toggle_requested)
@@ -46,6 +47,13 @@ func _start_battle() -> void:
 	for unit: TacticalUnit in units:
 		unit.stats_changed.connect(_on_unit_stats_changed.bind(unit))
 	turn_manager.start_battle(units)
+
+func _on_initiative_card_focus(unit: TacticalUnit) -> void:
+	if unit == null or not is_instance_valid(unit) or tactical_camera == null:
+		return
+	if not game_session.is_team_locally_controllable(unit.team_id):
+		return
+	tactical_camera.switch_focus_unit(unit)
 
 func _on_unit_selected(unit: TacticalUnit) -> void:
 	if not _input_enabled or unit == null:
