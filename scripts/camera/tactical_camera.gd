@@ -82,8 +82,6 @@ func _input(event: InputEvent) -> void:
 			else:
 				_is_panning = mouse_button.pressed and _is_ground_under_cursor(mouse_button.position)
 			get_viewport().set_input_as_handled()
-		elif _first_person_mode and mouse_button.button_index == MOUSE_BUTTON_LEFT:
-			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion and (_is_rotating or _is_panning):
 		var mouse_motion := event as InputEventMouseMotion
 		if _first_person_mode:
@@ -208,6 +206,30 @@ func _update_torch_flicker() -> void:
 
 func is_torch_enabled() -> bool:
 	return _torch_enabled
+
+func switch_focus_unit(unit: TacticalUnit) -> void:
+	if unit == null or not is_instance_valid(unit):
+		return
+	if _first_person_mode:
+		_active_unit = unit
+		if _exploration_controller != null:
+			_exploration_controller.configure(unit, _first_person_yaw)
+		_apply_first_person_transform()
+	else:
+		focus_on_unit(unit)
+
+func focus_on_unit(unit: TacticalUnit) -> void:
+	if unit == null or not is_instance_valid(unit):
+		return
+	var target := Vector3(unit.global_position.x, board_center.y, unit.global_position.z)
+	target.x = clampf(target.x, 0.0, float(GridManager.GRID_WIDTH - 1))
+	target.z = clampf(target.z, 0.0, float(GridManager.GRID_HEIGHT - 1))
+	var tween := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.tween_method(_set_board_center, board_center, target, 0.35)
+
+func _set_board_center(value: Vector3) -> void:
+	board_center = value
+	_apply_camera_transform()
 
 func _on_active_unit_changed(unit: TacticalUnit) -> void:
 	if unit != null and is_instance_valid(unit):
