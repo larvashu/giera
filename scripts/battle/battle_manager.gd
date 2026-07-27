@@ -21,6 +21,8 @@ var _exploration_mode: bool = false
 var _grid_was_visible_before_exploration: bool = false
 var _danger_zone_mob: WorldMob = null
 var _spawning_encounter: bool = false
+var _encounter_mode: bool = false
+var _encounter_participants: Array[TacticalUnit] = []
 
 func _ready() -> void:
 	player_controller.unit_selected.connect(_on_unit_selected)
@@ -176,6 +178,9 @@ func _on_round_started(round_value: int) -> void:
 	battle_ui.set_round(round_value)
 
 func _on_turn_started(unit: TacticalUnit) -> void:
+	if _encounter_mode and not _encounter_participants.has(unit):
+		turn_manager.end_current_turn()
+		return
 	var is_enemy := unit.faction == TacticalUnit.Faction.ENEMY
 	_input_enabled = not is_enemy and game_session.is_team_locally_controllable(unit.team_id)
 	_clear_pending_targets()
@@ -210,7 +215,32 @@ func _update_active_ui(unit: TacticalUnit) -> void:
 	battle_ui.set_active_unit(unit, can_end, phase)
 
 func _on_initiative_queue_changed(units: Array[TacticalUnit]) -> void:
-	battle_ui.set_initiative_order(units)
+	if _encounter_mode:
+		battle_ui.set_initiative_order(_get_encounter_preview())
+	else:
+		battle_ui.set_initiative_order(units)
+
+func _get_encounter_preview() -> Array[TacticalUnit]:
+	var result: Array[TacticalUnit] = []
+	for unit: TacticalUnit in turn_manager.get_initiative_preview():
+		if _encounter_participants.has(unit):
+			result.append(unit)
+	return result
+
+func _on_encounter_enemy_died(_unit: TacticalUnit) -> void:
+	_end_encounter()
+
+func _on_encounter_player_died(_unit: TacticalUnit) -> void:
+	_end_encounter()
+
+func _end_encounter() -> void:
+	if not _encounter_mode:
+		return
+	_encounter_mode = false
+	_encounter_participants.clear()
+	grid_manager.clear_danger_zone()
+	battle_ui.set_initiative_order(turn_manager.get_initiative_preview())
+	battle_ui.set_phase_message("Walka zakonczona — powrot do trybu strategicznego")
 
 func _on_unit_stats_changed(_unit: TacticalUnit) -> void:
 	battle_ui.refresh_details()
@@ -301,7 +331,12 @@ func _spawn_mob_encounter(mob: WorldMob) -> void:
 	mob.queue_free()
 	spawned_unit.stats_changed.connect(_on_unit_stats_changed.bind(spawned_unit))
 	turn_manager.add_participant(spawned_unit)
+	_encounter_mode = true
+	_encounter_participants = [active, spawned_unit]
+	spawned_unit.died.connect(_on_encounter_enemy_died.bind(spawned_unit))
+	active.died.connect(_on_encounter_player_died.bind(active))
 	battle_ui.set_phase_message("Spotkanie z %s! Walka!" % mob_display_name)
+	battle_ui.set_initiative_order(_get_encounter_preview())
 	if is_instance_valid(active) and not active.is_dead():
 		tactical_camera.focus_on_unit(active)
 	grid_manager.show_enemy_range(spawned_unit)
