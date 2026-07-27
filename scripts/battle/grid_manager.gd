@@ -25,6 +25,8 @@ var _blocked_cells: Dictionary[Vector2i, bool] = {}
 var _highlight_markers: Dictionary[Vector2i, MeshInstance3D] = {}
 var _highlighted_cells: Dictionary[Vector2i, int] = {}
 var _highlight_material: StandardMaterial3D
+var _danger_markers: Dictionary[Vector2i, MeshInstance3D] = {}
+var _danger_material: StandardMaterial3D
 var _terrain_features: Array[Vector4] = []
 var _terrain_surface: TerrainMapSurface
 var _water_surface: WaterMapSurface
@@ -103,6 +105,7 @@ func get_units() -> Array[TacticalUnit]:
 
 func _build_grid() -> void:
 	_highlight_material = _create_highlight_material()
+	_danger_material = _create_danger_material()
 	if _terrain_surface != null:
 		return
 	var terrain_mesh := _create_terrain_mesh()
@@ -121,6 +124,16 @@ func _build_grid() -> void:
 	floor_shape.shape = terrain_mesh.create_trimesh_shape()
 	floor_body.add_child(floor_shape)
 	add_child(floor_body)
+
+func spawn_enemy_at(character_type: StringName, cell: Vector2i) -> TacticalUnit:
+	var catalog := get_node("/root/TeamSaveManager") as TeamSaveService
+	if catalog == null:
+		return null
+	var definition := catalog.get_character(character_type)
+	if definition == null:
+		return null
+	_spawn_from_definition(definition, 2, 1, cell)
+	return _occupancy.get(cell)
 
 func spawn_default_units() -> void:
 	var catalog := get_node("/root/TeamSaveManager") as TeamSaveService
@@ -315,6 +328,20 @@ func _find_nearest_free_cell(origin: Vector2i, unit: TacticalUnit) -> Vector2i:
 					return candidate
 	return unit.grid_position
 
+func find_nearest_free_spawn_cell(origin: Vector2i) -> Vector2i:
+	for radius: int in range(maxi(GRID_WIDTH, GRID_HEIGHT)):
+		for x: int in range(origin.x - radius, origin.x + radius + 1):
+			for z: int in [origin.y - radius, origin.y + radius]:
+				var candidate := Vector2i(x, z)
+				if is_inside_grid(candidate) and not _blocked_cells.has(candidate) and not _occupancy.has(candidate):
+					return candidate
+		for z: int in range(origin.y - radius + 1, origin.y + radius):
+			for x: int in [origin.x - radius, origin.x + radius]:
+				var candidate := Vector2i(x, z)
+				if is_inside_grid(candidate) and not _blocked_cells.has(candidate) and not _occupancy.has(candidate):
+					return candidate
+	return origin
+
 func _is_free_for_relocation(cell: Vector2i, unit: TacticalUnit) -> bool:
 	return is_inside_grid(cell) and not _blocked_cells.has(cell) and (not _occupancy.has(cell) or _occupancy[cell] == unit)
 
@@ -431,14 +458,14 @@ void fragment() {
 	vec2 edge = min(cell, vec2(1.0) - cell);
 	float grid_line = 1.0 - smoothstep(0.02, 0.055, min(edge.x, edge.y));
 	float checker = mod(floor(scaled_uv.x) + floor(scaled_uv.y), 2.0);
-	vec3 natural_grass = grass * vec3(0.38, 0.68, 0.38) * mix(0.90, 1.04, checker);
+	vec3 natural_grass = grass * vec3(0.52, 0.82, 0.44) * mix(0.94, 1.08, checker);
 
 	float broad_noise = terrain_noise(scaled_uv * 0.032);
 	broad_noise += terrain_noise(scaled_uv * 0.071 + vec2(13.7, 4.2)) * 0.42;
 	float sand_mask = smoothstep(1.02, 1.24, broad_noise);
 	float sand_detail = terrain_noise(scaled_uv * 0.82 + vec2(2.1, 8.6));
-	vec3 sand_dark = vec3(0.28, 0.20, 0.115);
-	vec3 sand_light = vec3(0.58, 0.43, 0.245);
+	vec3 sand_dark = vec3(0.42, 0.30, 0.16);
+	vec3 sand_light = vec3(0.72, 0.55, 0.32);
 	vec3 sand = mix(sand_dark, sand_light, 0.34 + sand_detail * 0.46);
 	vec3 ground_color = mix(natural_grass, sand, sand_mask * 0.92);
 
@@ -450,14 +477,14 @@ void fragment() {
 	float east_west_trail = 1.0 - smoothstep(1.5, 2.25, abs(scaled_uv.y - east_west_z));
 	float trail_mask = max(north_south_trail, max(diagonal_trail, east_west_trail));
 	float trail_detail = terrain_noise(scaled_uv * 0.48 + vec2(6.2, 19.7));
-	vec3 trail_dark = vec3(0.34, 0.22, 0.045);
-	vec3 trail_yellow = vec3(0.78, 0.57, 0.12);
+	vec3 trail_dark = vec3(0.46, 0.30, 0.08);
+	vec3 trail_yellow = vec3(0.88, 0.68, 0.22);
 	vec3 trail_color = mix(trail_dark, trail_yellow, 0.48 + trail_detail * 0.38);
 	ground_color = mix(ground_color, trail_color, trail_mask * 0.94);
 
 	float visible_grid = grid_visible ? grid_line : 0.0;
-	ALBEDO = mix(ground_color, vec3(0.035, 0.055, 0.035), visible_grid * 0.82);
-	ROUGHNESS = mix(0.96, 0.88, sand_mask);
+	ALBEDO = mix(ground_color, vec3(0.04, 0.07, 0.04), visible_grid * 0.82);
+	ROUGHNESS = mix(0.88, 0.76, sand_mask);
 }
 """
 	var material := ShaderMaterial.new()
@@ -465,6 +492,57 @@ void fragment() {
 	material.set_shader_parameter("grass_texture", GRASS_TEXTURE)
 	material.set_shader_parameter("grid_size", Vector2(GRID_WIDTH, GRID_HEIGHT))
 	material.set_shader_parameter("grid_visible", _grid_visible)
+	return material
+
+func show_enemy_range(unit: TacticalUnit) -> void:
+	clear_danger_zone()
+	var cells := get_reachable_cells(unit.grid_position, unit.current_action_points)
+	for cell: Vector2i in cells:
+		_create_danger_marker(cell)
+	for dx: int in [-1, 0, 1]:
+		for dz: int in [-1, 0, 1]:
+			if dx == 0 and dz == 0:
+				continue
+			var adj := unit.grid_position + Vector2i(dx, dz)
+			if is_inside_grid(adj) and not _danger_markers.has(adj):
+				_create_danger_marker(adj)
+
+func show_danger_zone(center: Vector3, range_units: float) -> void:
+	clear_danger_zone()
+	var center_cell := Vector2i(roundi(center.x), roundi(center.z))
+	var radius := ceili(range_units)
+	for dz: int in range(-radius, radius + 1):
+		for dx: int in range(-radius, radius + 1):
+			var cell := center_cell + Vector2i(dx, dz)
+			if not is_inside_grid(cell):
+				continue
+			if Vector2(float(dx), float(dz)).length() > range_units:
+				continue
+			_create_danger_marker(cell)
+
+func clear_danger_zone() -> void:
+	for marker: MeshInstance3D in _danger_markers.values():
+		marker.queue_free()
+	_danger_markers.clear()
+
+func _create_danger_marker(cell: Vector2i) -> void:
+	var marker := MeshInstance3D.new()
+	marker.name = "DangerHighlight_%02d_%02d" % [cell.x, cell.y]
+	var marker_mesh := BoxMesh.new()
+	marker_mesh.size = Vector3(0.86, 0.035, 0.86)
+	marker.mesh = marker_mesh
+	marker.position = cell_to_world(cell) + Vector3(0.0, 0.12, 0.0)
+	marker.material_override = _danger_material
+	add_child(marker)
+	_danger_markers[cell] = marker
+
+func _create_danger_material() -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.9, 0.1, 0.1, 0.55)
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.emission_enabled = true
+	material.emission = Color(0.6, 0.05, 0.05, 1.0)
+	material.emission_energy_multiplier = 1.2
 	return material
 
 func _create_highlight_marker(cell: Vector2i) -> void:

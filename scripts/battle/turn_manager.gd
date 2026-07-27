@@ -94,6 +94,19 @@ func _begin_turn(unit: TacticalUnit) -> void:
 	initiative_queue_changed.emit(get_initiative_preview())
 	turn_started.emit(unit)
 
+func add_participant(unit: TacticalUnit) -> void:
+	if not is_instance_valid(unit) or participants.has(unit):
+		return
+	if unit.initiative_tiebreaker < 0:
+		unit.initiative_tiebreaker = _rng.randi_range(0, 1_000_000)
+	if not unit.died.is_connected(_on_participant_died):
+		unit.died.connect(_on_participant_died)
+	participants.append(unit)
+	unit.has_finished_turn = true
+	turn_order.append(unit)
+	_sort_turn_order()
+	initiative_queue_changed.emit(get_initiative_preview())
+
 func _on_participant_died(unit: TacticalUnit) -> void:
 	var removed_index := turn_order.find(unit)
 	participants.erase(unit)
