@@ -55,7 +55,7 @@ func _start_battle() -> void:
 func _on_initiative_card_focus(unit: TacticalUnit) -> void:
 	if unit == null or not is_instance_valid(unit) or tactical_camera == null:
 		return
-	if not game_session.is_team_locally_controllable(unit.team_id):
+	if unit.faction == TacticalUnit.Faction.ENEMY or not game_session.is_team_locally_controllable(unit.team_id):
 		return
 	tactical_camera.switch_focus_unit(unit)
 
@@ -176,7 +176,8 @@ func _on_round_started(round_value: int) -> void:
 	battle_ui.set_round(round_value)
 
 func _on_turn_started(unit: TacticalUnit) -> void:
-	_input_enabled = game_session.is_team_locally_controllable(unit.team_id)
+	var is_enemy := unit.faction == TacticalUnit.Faction.ENEMY
+	_input_enabled = not is_enemy and game_session.is_team_locally_controllable(unit.team_id)
 	_clear_pending_targets()
 	_selected_ability_index = -1
 	_selected_ability_name = ""
@@ -185,13 +186,12 @@ func _on_turn_started(unit: TacticalUnit) -> void:
 		grid_manager.clear_danger_zone()
 		_on_unit_selected(unit)
 		_refresh_movement_highlights()
-	elif game_session.should_auto_skip_team(unit.team_id):
+	elif is_enemy or game_session.should_auto_skip_team(unit.team_id):
 		grid_manager.clear_highlights()
 		grid_manager.show_enemy_range(unit)
 		_execute_enemy_turn(unit)
 	else:
 		grid_manager.clear_highlights()
-		grid_manager.show_enemy_range(unit)
 
 func _on_turn_ended(unit: TacticalUnit) -> void:
 	_enemy_turn_token += 1
