@@ -6,6 +6,8 @@ func _ready() -> void:
 	%TeamsButton.pressed.connect(_teams)
 	%CharactersButton.pressed.connect(_characters)
 	%MapEditorButton.pressed.connect(_map_editor)
+	%ExploreWorldButton.pressed.connect(_explore_world)
+	%WorldEditorButton.pressed.connect(_world_editor)
 	%QuitButton.pressed.connect(_quit)
 
 func _play() -> void:
@@ -19,6 +21,12 @@ func _characters() -> void:
 
 func _map_editor() -> void:
 	get_tree().change_scene_to_file("res://scenes/menu/map_editor.tscn")
+
+func _explore_world() -> void:
+	get_tree().change_scene_to_file("res://scenes/world/exploration_world.tscn")
+
+func _world_editor() -> void:
+	get_tree().change_scene_to_file("res://scenes/world/world_editor.tscn")
 
 func _quit() -> void:
 	get_tree().quit()
