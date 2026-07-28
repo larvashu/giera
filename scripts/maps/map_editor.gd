@@ -11,22 +11,22 @@ const ASSETS: Dictionary[String, String] = {
 	"grass_2": "res://assets/models/environment/grass_clump_02.glb",
 }
 const TOOL_GROUPS: Array[Dictionary] = [
-	{"title": "TEREN — KSZTALT", "tools": [
-		["terrain_raise", "Podnies"], ["terrain_lower", "Obniz"], ["terrain_smooth", "Wygladz"],
+	{"title": "LAD", "open": true, "tools": [
+		["terrain_raise", "Podnies teren"], ["terrain_lower", "Obniz teren"],
+		["terrain_smooth", "Wygladz teren"], ["paint_0", "Trawa"],
+		["paint_1", "Ziemia"], ["paint_2", "Piasek"], ["paint_3", "Skala"],
+		["water_add", "Woda"], ["water_remove", "Usun wode"],
 	]},
-	{"title": "TEREN — MATERIAL", "tools": [
-		["paint_0", "Trawa"], ["paint_1", "Ziemia"], ["paint_2", "Piasek"], ["paint_3", "Skala"],
-	]},
-	{"title": "TEREN — WODA", "tools": [
-		["water_add", "Dodaj wode"], ["water_remove", "Usun wode"],
-	]},
-	{"title": "OBIEKTY / DRZEWA", "tools": [
+	{"title": "OBIEKTY", "open": true, "thumbnails": true, "tools": [
 		["purple_tree_1", "Drzewo I"], ["purple_tree_2", "Drzewo II"],
-		["purple_tree_3", "Drzewo III"], ["large_tree", "Wielkie"],
-		["bush", "Krzak"], ["grass_1", "Trawa I"], ["grass_2", "Trawa II"], ["erase", "Gumka"],
+		["purple_tree_3", "Drzewo III"], ["large_tree", "Wielkie drzewo"],
+		["bush", "Krzak"], ["grass_1", "Trawa I"], ["grass_2", "Trawa II"],
 	]},
-	{"title": "POSTACIE", "tools": [
+	{"title": "POSTACIE", "open": false, "tools": [
 		["player_spawn", "Start gracza"], ["enemy_spawn", "Start wroga"],
+	]},
+	{"title": "EDYCJA", "open": true, "tools": [
+		["select", "Zaznacz obiekt"], ["erase", "Usun obiekt"],
 	]},
 ]
 
@@ -40,6 +40,10 @@ var _object_nodes: Array[Node3D] = []
 var _dragging_camera := false
 var _last_mouse_position := Vector2.ZERO
 var _last_action_msec := 0
+var _selected_object_index := -1
+var _selection_ring: MeshInstance3D
+var _transform_label: Label
+var _transform_buttons: Array[Button] = []
 
 @onready var canvas: Control = %MapCanvas
 var _viewport_container: SubViewportContainer
@@ -69,31 +73,56 @@ func _build_sidebar_controls() -> void:
 	%ToolOption.visible = false
 	var parent := %ToolOption.get_parent() as VBoxContainer
 	var insertion_index := %ToolOption.get_index()
+	var scroll := ScrollContainer.new()
+	scroll.name = "ToolPaletteScroll"
+	scroll.custom_minimum_size = Vector2(0.0, 360.0)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	parent.add_child(scroll)
+	parent.move_child(scroll, insertion_index)
 	var tools_panel := VBoxContainer.new()
 	tools_panel.name = "VisibleToolPalette"
-	tools_panel.add_theme_constant_override("separation", 3)
-	parent.add_child(tools_panel)
-	parent.move_child(tools_panel, insertion_index)
+	tools_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tools_panel.add_theme_constant_override("separation", 5)
+	scroll.add_child(tools_panel)
 	for group: Dictionary in TOOL_GROUPS:
-		var title := Label.new()
-		title.text = str(group["title"])
-		title.add_theme_font_size_override("font_size", 12)
-		title.modulate = Color(0.72, 0.9, 0.84)
-		tools_panel.add_child(title)
+		var section := VBoxContainer.new()
+		section.add_theme_constant_override("separation", 4)
+		tools_panel.add_child(section)
+		var title := Button.new()
+		title.text = ("▼ " if bool(group.get("open", false)) else "▶ ") + str(group["title"])
+		title.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		title.add_theme_font_size_override("font_size", 13)
+		section.add_child(title)
 		var grid := GridContainer.new()
 		grid.columns = 2
 		grid.add_theme_constant_override("h_separation", 4)
-		grid.add_theme_constant_override("v_separation", 3)
-		tools_panel.add_child(grid)
+		grid.add_theme_constant_override("v_separation", 4)
+		grid.visible = bool(group.get("open", false))
+		section.add_child(grid)
+		title.pressed.connect(_toggle_section.bind(title, grid, str(group["title"])))
 		for entry: Array in group["tools"]:
-			var button := Button.new()
 			var tool_id := str(entry[0])
 			var label := str(entry[1])
-			button.text = label
-			button.custom_minimum_size = Vector2(76.0, 24.0)
-			button.add_theme_font_size_override("font_size", 11)
-			button.pressed.connect(_select_tool.bind(tool_id, label))
-			grid.add_child(button)
+			grid.add_child(_create_tool_button(tool_id, label, bool(group.get("thumbnails", false))))
+	_transform_label = Label.new()
+	_transform_label.text = "TRANSFORMACJA — brak zaznaczenia"
+	_transform_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tools_panel.add_child(_transform_label)
+	var transform_grid := GridContainer.new()
+	transform_grid.columns = 3
+	tools_panel.add_child(transform_grid)
+	for entry: Array in [
+		["↶ 15°", -15.0, 0.0, false], ["↷ 15°", 15.0, 0.0, false],
+		["Odwroc", 0.0, 0.0, true], ["Obniz", 0.0, -0.25, false],
+		["Wyzeruj", 0.0, INF, false], ["Podnies", 0.0, 0.25, false],
+	]:
+		var button := Button.new()
+		button.text = str(entry[0])
+		button.custom_minimum_size = Vector2(84.0, 28.0)
+		button.disabled = true
+		button.pressed.connect(_transform_selected.bind(float(entry[1]), float(entry[2]), bool(entry[3])))
+		transform_grid.add_child(button)
+		_transform_buttons.append(button)
 	_brush_label = Label.new()
 	_brush_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tools_panel.add_child(_brush_label)
@@ -111,9 +140,119 @@ func _build_sidebar_controls() -> void:
 	tools_panel.add_child(_brush_strength_slider)
 	_update_brush_label()
 
+func _toggle_section(button: Button, content: Control, title: String) -> void:
+	content.visible = not content.visible
+	button.text = ("▼ " if content.visible else "▶ ") + title
+
+func _create_tool_button(tool_id: String, label: String, thumbnail: bool) -> Button:
+	var button := Button.new()
+	button.text = label
+	button.tooltip_text = label
+	button.custom_minimum_size = Vector2(140.0, 108.0 if thumbnail else 30.0)
+	button.add_theme_font_size_override("font_size", 11)
+	button.pressed.connect(_select_tool.bind(tool_id, label))
+	if thumbnail and ASSETS.has(tool_id):
+		button.icon = _create_asset_preview(ASSETS[tool_id])
+		button.add_theme_constant_override("icon_max_width", 72)
+		button.expand_icon = true
+		button.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
+	return button
+
+func _create_asset_preview(scene_path: String) -> Texture2D:
+	var preview := SubViewport.new()
+	preview.size = Vector2i(96, 72)
+	preview.transparent_bg = true
+	preview.own_world_3d = true
+	preview.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(preview)
+	var packed := load(scene_path) as PackedScene
+	if packed == null:
+		return preview.get_texture()
+	var model := packed.instantiate() as Node3D
+	if model == null:
+		return preview.get_texture()
+	preview.add_child(model)
+	var bounds := _node_bounds(model)
+	model.position -= bounds.get_center()
+	var extent := maxf(maxf(bounds.size.x, bounds.size.y), bounds.size.z)
+	var camera := Camera3D.new()
+	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
+	camera.size = maxf(1.5, extent * 1.35)
+	preview.add_child(camera)
+	camera.look_at_from_position(Vector3(extent * 1.15, extent * 0.7, extent * 1.65), Vector3.ZERO)
+	camera.current = true
+	var light := DirectionalLight3D.new()
+	light.rotation_degrees = Vector3(-45.0, -35.0, 0.0)
+	light.light_energy = 1.4
+	preview.add_child(light)
+	var world_environment := WorldEnvironment.new()
+	var environment := Environment.new()
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	environment.ambient_light_color = Color.WHITE
+	environment.ambient_light_energy = 0.75
+	world_environment.environment = environment
+	preview.add_child(world_environment)
+	return preview.get_texture()
+
+func _node_bounds(root: Node3D) -> AABB:
+	var result := AABB(Vector3.ZERO, Vector3.ONE)
+	var initialized := false
+	for child: Node in root.find_children("*", "VisualInstance3D", true, false):
+		var visual := child as VisualInstance3D
+		var child_bounds := visual.get_aabb()
+		child_bounds = visual.transform * child_bounds
+		if initialized:
+			result = result.merge(child_bounds)
+		else:
+			result = child_bounds
+			initialized = true
+	return result
+
 func _select_tool(tool_id: String, label: String) -> void:
 	active_tool = tool_id
 	_update_status("Narzedzie: " + label)
+
+func _select_nearest(world_position: Vector3) -> void:
+	var best_index := -1
+	var best_distance := 3.0
+	for index: int in range(objects.size()):
+		var data: Dictionary = objects[index]
+		var distance := Vector2(float(data.get("x", 0)), float(data.get("z", 0))).distance_to(Vector2(world_position.x, world_position.z))
+		if distance < best_distance:
+			best_distance = distance
+			best_index = index
+	_selected_object_index = best_index
+	_update_selection_ui()
+
+func _transform_selected(rotation_delta: float, height_delta: float, flip: bool) -> void:
+	if _selected_object_index < 0 or _selected_object_index >= objects.size():
+		return
+	var data: Dictionary = objects[_selected_object_index]
+	data["rotation"] = fposmod(float(data.get("rotation", 0.0)) + rotation_delta, 360.0)
+	if is_inf(height_delta):
+		data["height_offset"] = 0.0
+	else:
+		data["height_offset"] = clampf(float(data.get("height_offset", 0.0)) + height_delta, -5.0, 12.0)
+	if flip:
+		data["flipped"] = not bool(data.get("flipped", false))
+	objects[_selected_object_index] = data
+	_rebuild_objects()
+	_update_selection_ui()
+
+func _update_selection_ui() -> void:
+	var valid := _selected_object_index >= 0 and _selected_object_index < objects.size()
+	for button: Button in _transform_buttons:
+		button.disabled = not valid
+	if not valid:
+		_transform_label.text = "TRANSFORMACJA — brak zaznaczenia"
+		if _selection_ring != null:
+			_selection_ring.visible = false
+		return
+	var data: Dictionary = objects[_selected_object_index]
+	_transform_label.text = "TRANSFORMACJA — %s | kat %.0f° | wysokosc %+.2f" % [str(data.get("type", "obiekt")), float(data.get("rotation", 0.0)), float(data.get("height_offset", 0.0))]
+	if _selection_ring != null and _selected_object_index < _object_nodes.size():
+		_selection_ring.visible = true
+		_selection_ring.position = _object_nodes[_selected_object_index].position + Vector3.UP * 0.08
 
 func _build_3d_view() -> void:
 	_viewport_container = SubViewportContainer.new()
@@ -175,6 +314,19 @@ func _build_3d_view() -> void:
 	_cursor.material_override = cursor_material
 	_cursor.visible = false
 	_markers_root.add_child(_cursor)
+	_selection_ring = MeshInstance3D.new()
+	var ring_mesh := TorusMesh.new()
+	ring_mesh.inner_radius = 0.8
+	ring_mesh.outer_radius = 1.05
+	_selection_ring.mesh = ring_mesh
+	var ring_material := StandardMaterial3D.new()
+	ring_material.albedo_color = Color(1.0, 0.78, 0.18)
+	ring_material.emission_enabled = true
+	ring_material.emission = Color(1.0, 0.55, 0.08)
+	ring_material.emission_energy_multiplier = 1.6
+	_selection_ring.material_override = ring_material
+	_selection_ring.visible = false
+	_markers_root.add_child(_selection_ring)
 
 func _connect_ui() -> void:
 	_viewport_container.gui_input.connect(_on_viewport_input)
@@ -252,6 +404,8 @@ func _apply_tool(world_position: Vector3) -> void:
 		_terrain_surface.paint_texture(world_position, brush_radius, brush_strength, int(active_tool.trim_prefix("paint_")))
 	elif active_tool == "water_add" or active_tool == "water_remove":
 		_water_surface.apply_brush(world_position, brush_radius, active_tool == "water_remove")
+	elif active_tool == "select":
+		_select_nearest(world_position)
 	elif active_tool == "erase":
 		_erase_nearest(world_position)
 	elif active_tool == "player_spawn":
@@ -261,8 +415,10 @@ func _apply_tool(world_position: Vector3) -> void:
 		_set_spawn(enemy_spawns, cell)
 		_update_markers()
 	else:
-		objects.append({"type": active_tool, "x": cell.x, "z": cell.y, "rotation": randf_range(0.0, 360.0), "scale": 1.0})
+		objects.append({"type": active_tool, "x": cell.x, "z": cell.y, "rotation": 0.0, "scale": 1.0, "height_offset": 0.0, "flipped": false})
+		_selected_object_index = objects.size() - 1
 		_rebuild_objects()
+		_update_selection_ui()
 	_update_status("Obiekty: %d | Woda: %d pol" % [objects.size(), _water_surface.get_cell_count()])
 
 func _erase_nearest(world_position: Vector3) -> void:
@@ -276,7 +432,9 @@ func _erase_nearest(world_position: Vector3) -> void:
 			best_index = index
 	if best_index >= 0:
 		objects.remove_at(best_index)
+		_selected_object_index = -1
 		_rebuild_objects()
+		_update_selection_ui()
 
 func _set_spawn(spawns: Array[Dictionary], cell: Vector2i) -> void:
 	if not spawns.is_empty():
@@ -302,24 +460,26 @@ func _rebuild_objects() -> void:
 		if model == null:
 			continue
 		var scale_value := clampf(float(data.get("scale", 1.0)), 0.2, 8.0)
-		model.scale = Vector3.ONE * scale_value
+		var flip_sign := -1.0 if bool(data.get("flipped", false)) else 1.0
+		model.scale = Vector3(scale_value * flip_sign, scale_value, scale_value)
 		model.rotation.y = deg_to_rad(float(data.get("rotation", 0.0)))
 		holder.add_child(model)
 		var x := float(data.get("x", 0))
 		var z := float(data.get("z", 0))
-		holder.position = Vector3(x, terrain_height(x, z), z)
+		holder.position = Vector3(x, terrain_height(x, z) + float(data.get("height_offset", 0.0)), z)
 		_objects_root.add_child(holder)
 		_object_nodes.append(holder)
 
 func _reposition_scene_content() -> void:
 	for index: int in range(mini(objects.size(), _object_nodes.size())):
 		var data: Dictionary = objects[index]
-		_object_nodes[index].position.y = terrain_height(float(data.get("x", 0)), float(data.get("z", 0)))
+		_object_nodes[index].position.y = terrain_height(float(data.get("x", 0)), float(data.get("z", 0))) + float(data.get("height_offset", 0.0))
 	_update_markers()
+	_update_selection_ui()
 
 func _update_markers() -> void:
 	for child: Node in _markers_root.get_children():
-		if child != _cursor:
+		if child != _cursor and child != _selection_ring:
 			child.queue_free()
 	for spawn: Dictionary in player_spawns:
 		_create_spawn_marker(spawn, Color.CYAN)
@@ -346,10 +506,12 @@ func _create_spawn_marker(data: Dictionary, color: Color) -> void:
 
 func _clear_map() -> void:
 	objects.clear()
+	_selected_object_index = -1
 	_terrain_surface.clear_height()
 	_water_surface.clear()
 	_rebuild_objects()
 	_update_markers()
+	_update_selection_ui()
 	_update_status("Mapa wyczyszczona")
 
 func _save() -> void:
