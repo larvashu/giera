@@ -12,16 +12,16 @@ config_version=5
 
 config/name="Giera"
 run/main_scene="res://scenes/menu/main_menu.tscn"
-config/features=PackedStringArray("4.6", "Forward Plus")
+config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
 [autoload]
 
-_mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 GameSession="*res://scripts/session/game_session.gd"
 TeamSaveManager="*res://scripts/data/team_save_manager.gd"
 CharacterProfileManager="*res://scripts/data/character_profile_manager.gd"
 MapCatalog="*res://scripts/maps/map_catalog.gd"
+_mcp_game_helper="*res://addons/godot_ai/runtime/game_helper.gd"
 
 [display]
 

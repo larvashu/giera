@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="CharacterDefinition" format=3 uid="uid://bmrlooym0guec"]
+
+[ext_resource type="Script" uid="uid://duf1hu1r7kpkh" path="res://scripts/data/character_definition.gd" id="1_def"]
+[ext_resource type="PackedScene" path="res://scenes/units/unit.tscn" id="2_scene"]
+[ext_resource type="PackedScene" uid="uid://bt1jpd7w1l84b" path="res://assets/models/characters/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Ranger.gltf" id="3_4jppt"]
+
+[resource]
+script = ExtResource("1_def")
+character_id = &"bandit"
+display_name = "Bandyta"
+description = "Podstepty rozbojnik czyhajacy na samotnych wędrowców."
+role_name = "Rozbojnik"
+max_health = 14
+initiative = 11
+scene = ExtResource("2_scene")
+visual_scene = ExtResource("3_4jppt")
+visual_color = Color(0.72, 0.52, 0.32, 1)
+visual_scale = 0.72
+visual_offset = Vector3(0, 0.36, 0)
+visual_rotation_degrees = Vector3(0, 180, 0)

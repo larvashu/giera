@@ -3,6 +3,7 @@ extends Node
 
 signal unit_selected(unit: TacticalUnit)
 signal grid_cell_clicked(cell: Vector2i)
+signal world_mob_clicked(mob: WorldMob)
 
 @export var camera_path: NodePath
 var _camera: Camera3D
@@ -31,5 +32,10 @@ func _handle_left_click(screen_position: Vector2) -> void:
 	if collider is TacticalUnit:
 		unit_selected.emit(collider as TacticalUnit)
 		return
+	if collider is Area3D:
+		var parent := collider.get_parent()
+		if parent is WorldMob:
+			world_mob_clicked.emit(parent as WorldMob)
+			return
 	var hit_position: Vector3 = hit.get("position", Vector3.ZERO)
 	grid_cell_clicked.emit(Vector2i(roundi(hit_position.x), roundi(hit_position.z)))

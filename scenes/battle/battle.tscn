@@ -11,6 +11,7 @@
 [ext_resource type="Script" uid="uid://c8gx5t4g70d2i" path="res://scripts/environment/world_sector_streamer.gd" id="9_agsc7"]
 [ext_resource type="Script" uid="uid://bqyaux44nd00b" path="res://scripts/maps/map_runtime.gd" id="10_map"]
 [ext_resource type="Script" uid="uid://bpcdbulij456v" path="res://scripts/environment/camera_grass_streamer.gd" id="11_fisqk"]
+[ext_resource type="Script" uid="uid://c8sw4swxenphj" path="res://scripts/environment/world_mob.gd" id="12_mxe8n"]
 
 [sub_resource type="Environment" id="Environment_battle"]
 background_mode = 1
@@ -67,3 +68,8 @@ script = ExtResource("9_agsc7")
 
 [node name="CameraGrassStreamer" type="Node3D" parent="." unique_id=680929547]
 script = ExtResource("11_fisqk")
+
+[node name="Node3D" type="Node3D" parent="." unique_id=1230018145]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 85, 0, 50)
+script = ExtResource("12_mxe8n")
+model_offset = Vector3(0, 0.44, 0)

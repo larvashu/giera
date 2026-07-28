@@ -33,12 +33,95 @@ var _selected_ability_index: int = -1
 var _exploration_mode: bool = false
 var _can_end_active_turn: bool = false
 
+var _enemy_panel: PanelContainer
+var _enemy_name_label: Label
+var _enemy_hp_bar: ProgressBar
+var _enemy_hp_label: Label
+
 func _ready() -> void:
 	end_turn_button.pressed.connect(_request_end_turn)
 	end_turn_button.disabled = true
 	skill_bar.visible = false
 	details_label.text = "Brak zaznaczonej jednostki"
 	_update_action_point_dots(null)
+	_build_enemy_panel()
+
+func _build_enemy_panel() -> void:
+	var details_vbox := details_label.get_parent()
+
+	var separator := HSeparator.new()
+	separator.name = "HpBarSeparator"
+	separator.add_theme_color_override("separator_color", Color(0.3, 0.3, 0.3, 0.5))
+	details_vbox.add_child(separator)
+	details_vbox.move_child(separator, details_label.get_index() + 1)
+
+	_enemy_panel = PanelContainer.new()
+	_enemy_panel.name = "HpBarContainer"
+	_enemy_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+	style.content_margin_top = 2.0
+	style.content_margin_bottom = 2.0
+	_enemy_panel.add_theme_stylebox_override("panel", style)
+	details_vbox.add_child(_enemy_panel)
+	details_vbox.move_child(_enemy_panel, separator.get_index() + 1)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 3)
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_enemy_panel.add_child(vbox)
+
+	_enemy_name_label = Label.new()
+	_enemy_name_label.add_theme_font_size_override("font_size", 13)
+	_enemy_name_label.add_theme_color_override("font_color", Color(1.0, 0.38, 0.3, 1.0))
+	_enemy_name_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(_enemy_name_label)
+
+	var hp_row := HBoxContainer.new()
+	hp_row.add_theme_constant_override("separation", 6)
+	hp_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(hp_row)
+
+	_enemy_hp_bar = ProgressBar.new()
+	_enemy_hp_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_enemy_hp_bar.custom_minimum_size = Vector2(0.0, 14.0)
+	_enemy_hp_bar.show_percentage = false
+	_enemy_hp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bg_style := StyleBoxFlat.new()
+	bg_style.bg_color = Color(0.15, 0.05, 0.05, 1.0)
+	bg_style.set_corner_radius_all(3)
+	var fill_style := StyleBoxFlat.new()
+	fill_style.bg_color = Color(0.82, 0.14, 0.1, 1.0)
+	fill_style.set_corner_radius_all(3)
+	_enemy_hp_bar.add_theme_stylebox_override("background", bg_style)
+	_enemy_hp_bar.add_theme_stylebox_override("fill", fill_style)
+	hp_row.add_child(_enemy_hp_bar)
+
+	_enemy_hp_label = Label.new()
+	_enemy_hp_label.add_theme_font_size_override("font_size", 11)
+	_enemy_hp_label.add_theme_color_override("font_color", Color(1.0, 0.65, 0.6, 1.0))
+	_enemy_hp_label.custom_minimum_size = Vector2(52.0, 0.0)
+	_enemy_hp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_enemy_hp_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hp_row.add_child(_enemy_hp_label)
+
+	_enemy_panel.visible = false
+	separator.visible = false
+
+func _update_enemy_panel(unit: TacticalUnit) -> void:
+	var separator := _enemy_panel.get_parent().get_node_or_null("HpBarSeparator")
+	if unit == null or not is_instance_valid(unit) or unit.team_id == 0:
+		_enemy_panel.visible = false
+		if separator != null:
+			separator.visible = false
+		return
+	_enemy_panel.visible = true
+	if separator != null:
+		separator.visible = true
+	_enemy_name_label.text = unit.display_name
+	_enemy_hp_bar.max_value = unit.max_health
+	_enemy_hp_bar.value = unit.current_health
+	_enemy_hp_label.text = "%d / %d" % [unit.current_health, unit.max_health]
 
 func set_round(round_value: int) -> void:
 	round_label.text = "Runda: %d" % round_value
@@ -181,6 +264,7 @@ func refresh_details() -> void:
 	if unit == null or not is_instance_valid(unit):
 		details_label.text = "Brak zaznaczonej jednostki"
 		_update_action_point_dots(null)
+		_update_enemy_panel(null)
 		return
 	var team_name := "Gracz 1" if unit.team_id == 0 else "Gracz 2 / Przeciwnik"
 	var status := "Aktywna tura" if unit == _active_unit and not unit.has_finished_turn else "Tura zakonczona" if unit.has_finished_turn else "Oczekuje"
@@ -190,6 +274,7 @@ func refresh_details() -> void:
 		unit.initiative, status
 	]
 	_update_action_point_dots(unit)
+	_update_enemy_panel(unit)
 
 func _update_action_point_dots(unit: TacticalUnit) -> void:
 	for child: Node in action_point_dots.get_children():

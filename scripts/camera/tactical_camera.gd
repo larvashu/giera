@@ -4,6 +4,7 @@ extends Camera3D
 signal exploration_mode_changed(enabled: bool, unit: TacticalUnit, world_position: Vector3)
 signal tactical_grid_toggle_requested
 signal torch_state_changed(enabled: bool)
+signal mob_spotted(mob: WorldMob)
 
 @export var board_center: Vector3 = Vector3(79.5, 0.0, 94.5)
 @export var camera_offset: Vector3 = Vector3(145.0, 165.0, 145.0)
@@ -18,6 +19,9 @@ signal torch_state_changed(enabled: bool)
 @export_range(0.5, 3.0, 0.05) var first_person_height: float = 1.55
 @export_range(0.001, 0.02, 0.001) var first_person_look_sensitivity: float = 0.004
 
+@export_range(3.0, 40.0, 0.5) var vision_range: float = 15.0
+@export_range(20.0, 120.0, 5.0) var vision_fov_degrees: float = 90.0
+
 var _is_rotating: bool = false
 var _is_panning: bool = false
 var _first_person_mode: bool = false
@@ -29,6 +33,7 @@ var _exploration_controller: FirstPersonExplorationController
 var _torch_light: SpotLight3D
 var _torch_fill_light: OmniLight3D
 var _torch_enabled: bool = false
+var _spotted_mobs: Dictionary[WorldMob, bool] = {}
 
 func _ready() -> void:
 	projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -46,6 +51,7 @@ func _process(delta: float) -> void:
 	if _first_person_mode:
 		_apply_first_person_transform()
 		_update_torch_flicker()
+		_check_line_of_sight()
 	else:
 		_process_keyboard_pan(delta)
 
@@ -123,6 +129,7 @@ func _leave_first_person() -> void:
 	var exploration_position := _active_unit.global_position if _active_unit != null and is_instance_valid(_active_unit) else Vector3.ZERO
 	_first_person_mode = false
 	_is_rotating = false
+	_spotted_mobs.clear()
 	_set_torch_visibility()
 	if _exploration_controller != null:
 		exploration_position = _exploration_controller.global_position
@@ -130,6 +137,13 @@ func _leave_first_person() -> void:
 		_exploration_controller = null
 	exploration_mode_changed.emit(false, _active_unit, exploration_position)
 	projection = Camera3D.PROJECTION_ORTHOGONAL
+	size = 75.0
+	var behind := Vector3(sin(_first_person_yaw), 0.0, cos(_first_person_yaw))
+	camera_offset = behind * 205.0 + Vector3.UP * 165.0
+	if _active_unit != null and is_instance_valid(_active_unit):
+		var unit_pos := _active_unit.global_position
+		board_center = Vector3(unit_pos.x, board_center.y, unit_pos.z)
+		_clamp_board_center()
 	_apply_camera_transform()
 
 func _apply_first_person_transform() -> void:
@@ -206,6 +220,10 @@ func _update_torch_flicker() -> void:
 
 func is_torch_enabled() -> bool:
 	return _torch_enabled
+
+func exit_exploration_mode() -> void:
+	if _first_person_mode:
+		_leave_first_person()
 
 func switch_focus_unit(unit: TacticalUnit) -> void:
 	if unit == null or not is_instance_valid(unit):
@@ -298,6 +316,36 @@ func _rotate_camera(mouse_delta: Vector2) -> void:
 
 	camera_offset = offset
 	_apply_camera_transform()
+
+func _check_line_of_sight() -> void:
+	var mobs := get_tree().get_nodes_in_group("world_mobs")
+	if mobs.is_empty():
+		return
+	var eye_pos: Vector3 = global_position
+	var forward := Vector3(-sin(_first_person_yaw), 0.0, -cos(_first_person_yaw))
+	var half_fov: float = deg_to_rad(vision_fov_degrees * 0.5)
+	var space_state := get_world_3d().direct_space_state
+	for node: Node in mobs:
+		var mob := node as WorldMob
+		if mob == null or not is_instance_valid(mob):
+			continue
+		if _spotted_mobs.has(mob):
+			continue
+		var to_mob: Vector3 = mob.global_position - eye_pos
+		if to_mob.length() > vision_range:
+			continue
+		var to_mob_flat := Vector3(to_mob.x, 0.0, to_mob.z).normalized()
+		var angle: float = forward.angle_to(to_mob_flat)
+		if angle > half_fov:
+			continue
+		var query := PhysicsRayQueryParameters3D.create(eye_pos, mob.global_position + Vector3.UP * 0.8)
+		query.collision_mask = 1
+		query.exclude = [self]
+		var result: Dictionary = space_state.intersect_ray(query)
+		if not result.is_empty():
+			continue
+		_spotted_mobs[mob] = true
+		mob_spotted.emit(mob)
 
 func _apply_camera_transform() -> void:
 	position = board_center + camera_offset
