@@ -40,6 +40,7 @@ var object_density: float = 0.18
 var _object_renderer: MapObjectMultiMeshRenderer
 var _dragging_camera := false
 var _painting_objects := false
+var _object_rebuild_pending := false
 var _last_object_stamp := Vector3(INF, INF, INF)
 var _fpp_enabled := false
 var _ghost_placed := false
@@ -471,6 +472,8 @@ func _on_viewport_input(event: InputEvent) -> void:
 			if button.pressed:
 				_last_object_stamp = Vector3(INF, INF, INF)
 				_try_apply_at_screen(button.position)
+			elif _object_rebuild_pending:
+				_flush_object_rebuild()
 
 func _try_apply_at_screen(screen_position: Vector2) -> void:
 	var now_msec := Time.get_ticks_msec()
@@ -541,8 +544,8 @@ func _scatter_objects(center: Vector3) -> void:
 	if not ASSETS.has(active_tool):
 		return
 	var obstacle := active_tool.begins_with("purple_tree_") or active_tool == "large_tree"
-	var effective_density := minf(object_density, 0.10) if obstacle else object_density
-	var maximum := 80 if obstacle else 240
+	var effective_density := minf(object_density, 0.015) if obstacle else object_density
+	var maximum := 24 if obstacle else 240
 	var requested := clampi(roundi(PI * brush_radius * brush_radius * effective_density), 1, maximum)
 	var added := 0
 	for index: int in range(requested * 3):
@@ -567,8 +570,9 @@ func _scatter_objects(center: Vector3) -> void:
 		})
 		added += 1
 	_selected_object_index = objects.size() - 1 if added > 0 else -1
-	_rebuild_objects()
-	_update_selection_ui()
+	_object_rebuild_pending = _object_rebuild_pending or added > 0
+	if not _painting_objects:
+		_flush_object_rebuild()
 
 func _has_nearby_object(kind: String, target_position: Vector2, minimum_distance: float) -> bool:
 	for data: Dictionary in objects:
@@ -601,6 +605,13 @@ func _set_spawn(spawns: Array[Dictionary], cell: Vector2i) -> void:
 
 func terrain_height(world_x: float, world_z: float) -> float:
 	return _terrain_surface.get_height(world_x, world_z)
+
+func _flush_object_rebuild() -> void:
+	if not _object_rebuild_pending:
+		return
+	_object_rebuild_pending = false
+	_rebuild_objects()
+	_update_selection_ui()
 
 func _rebuild_objects() -> void:
 	if _object_renderer == null:
