@@ -24,6 +24,7 @@ var _region: Terrain3DRegion
 var _data_directory: String = ""
 var _overlay_multimesh: MultiMesh
 var _overlay_instance: MultiMeshInstance3D
+var _visual_surface: TerrainVisualSurface
 
 func setup(camera: Camera3D = null, data_directory: String = "", legacy_strokes: Array = []) -> void:
 	_data_directory = data_directory
@@ -47,7 +48,10 @@ func setup(camera: Camera3D = null, data_directory: String = "", legacy_strokes:
 		_region = terrain.data.add_region_blank(REGION_LOCATION, false)
 		_initialize_base_height()
 	_ensure_paintable_control()
-	_build_visual_overlay()
+	_visual_surface = TerrainVisualSurface.new()
+	_visual_surface.name = "SeamlessTerrainVisual"
+	add_child(_visual_surface)
+	_visual_surface.setup(self, PAINT_TEXTURES)
 	if not legacy_strokes.is_empty():
 		_import_legacy_strokes(legacy_strokes)
 
@@ -83,7 +87,8 @@ func apply_brush(center: Vector3, radius: float, strength: float, operation: Str
 	for change: Vector3 in changes:
 		terrain.data.set_height(Vector3(change.x, 0.0, change.z), change.y)
 	_finish_height_edit()
-	_refresh_overlay_heights(changes)
+	if _visual_surface != null:
+		_visual_surface.rebuild_region(center, radius)
 
 func paint_texture(center: Vector3, radius: float, strength: float, texture_id: int) -> void:
 	if terrain == null or _region == null or texture_id < 0 or texture_id >= PAINT_TEXTURES.size():
@@ -116,9 +121,10 @@ func paint_texture(center: Vector3, radius: float, strength: float, texture_id: 
 			var current_color := terrain.data.get_color(point)
 			var target_color := MATERIAL_COLORS[texture_id]
 			terrain.data.set_color(point, current_color.lerp(target_color, clampf(strength * 0.24 * influence, 0.0, 1.0)))
-			_set_overlay_material(x, z, texture_id)
 	terrain.data.update_maps(Terrain3DRegion.TYPE_CONTROL, false, false)
 	terrain.data.update_maps(Terrain3DRegion.TYPE_COLOR, false, false)
+	if _visual_surface != null:
+		_visual_surface.rebuild_region(center, radius)
 
 func get_height(world_x: float, world_z: float) -> float:
 	if terrain == null or terrain.data == null:
@@ -138,6 +144,8 @@ func clear_height() -> void:
 		for x: int in range(MAP_SIZE.x):
 			terrain.data.set_height(Vector3(float(x), 0.0, float(z)), 0.0)
 	_finish_height_edit()
+	if _visual_surface != null:
+		_visual_surface.rebuild()
 
 func save_to_directory(directory: String) -> void:
 	if terrain == null:
@@ -168,6 +176,13 @@ func _ensure_paintable_control() -> void:
 	for z: int in range(MAP_SIZE.y):
 		for x: int in range(MAP_SIZE.x):
 			var point := Vector3(float(x), 0.0, float(z))
+			var base_id := terrain.data.get_control_base_id(point)
+			var overlay_id := terrain.data.get_control_overlay_id(point)
+			if base_id < 0 or base_id >= PAINT_TEXTURES.size():
+				terrain.data.set_control_base_id(point, 0)
+			if overlay_id < 0 or overlay_id >= PAINT_TEXTURES.size():
+				terrain.data.set_control_overlay_id(point, 0)
+				terrain.data.set_control_blend(point, 0.0)
 			terrain.data.set_control_auto(point, false)
 	terrain.data.update_maps(Terrain3DRegion.TYPE_CONTROL, false, false)
 	terrain.data.update_maps(Terrain3DRegion.TYPE_COLOR, false, false)
