@@ -160,31 +160,83 @@ func _build_forest() -> void:
 	for variant in range(3): _add_scene_multimesh("ForestTrees_%d" % variant, TREE_SCENES[variant], transforms[variant], false)
 
 func _build_forest_proxy(rng: RandomNumberGenerator) -> void:
-	# Streamowane plansze uzywaja tych samych modeli co Dzika Polana, ale rzadszych i bez cieni.
-	# Nie zmieniamy ich po przekroczeniu granicy, wiec drzewa nie przeskakuja miedzy LOD-ami.
-	var transforms: Array[Array] = [[],[],[]]
-	for index in range(52):
-		var point := Vector2(rng.randf_range(4.0,REGION_SIZE.x-4.0),rng.randf_range(4.0,REGION_SIZE.y-4.0))
-		if _is_on_road(point,2.0): continue
-		var variant := rng.randi_range(0,2)
-		var scale := rng.randf_range(4.0,6.6)
-		transforms[variant].append(Transform3D(Basis(Vector3.UP,rng.randf_range(0.0,TAU)).scaled(Vector3.ONE*scale),Vector3(point.x,height_at(point.x,point.y)+scale,point.y)))
-	for variant in range(3): _add_scene_multimesh("StreamedForestTrees_%d" % variant,TREE_SCENES[variant],transforms[variant],false)
-	var canopy_mesh := SphereMesh.new(); canopy_mesh.radius = 2.2; canopy_mesh.height = 7.4; canopy_mesh.radial_segments = 8; canopy_mesh.rings = 5
-	var canopy_material := StandardMaterial3D.new(); canopy_material.albedo_color = Color("244d29"); canopy_material.roughness = 0.94; canopy_mesh.material = canopy_material
-	var background_trees: Array[Transform3D] = []
-	for index in range(170):
-		var point := Vector2(rng.randf_range(4.0,REGION_SIZE.x-4.0),rng.randf_range(4.0,REGION_SIZE.y-4.0))
-		if _is_on_road(point,2.0): continue
-		var scale := rng.randf_range(0.78,1.42)
-		background_trees.append(Transform3D(Basis(Vector3.UP,rng.randf_range(0.0,TAU)).scaled(Vector3.ONE*scale),Vector3(point.x,height_at(point.x,point.y)+4.25*scale,point.y)))
-	_add_mesh_multimesh("BackgroundForestCanopies",canopy_mesh,background_trees,false)
+	const TARGET_TREE_COUNT := 321
+	const FOREST_SPACING := 9
+	var points: Array[Vector2] = []
+	var row := 0
+	for z in range(2, int(REGION_SIZE.y)-2, FOREST_SPACING):
+		var row_offset := 4.5 if row % 2 == 1 else 0.0
+		for x in range(2, int(REGION_SIZE.x)-2, FOREST_SPACING):
+			var point := Vector2(float(x)+row_offset+rng.randf_range(-2.2,2.2),float(z)+rng.randf_range(-2.2,2.2))
+			point.x=clampf(point.x,2.0,REGION_SIZE.x-2.0)
+			if not _is_on_road(point,1.0): points.append(point)
+		row+=1
+	var attempts := 0
+	while points.size()<TARGET_TREE_COUNT and attempts<6000:
+		attempts+=1
+		var candidate:=Vector2(rng.randf_range(3.0,REGION_SIZE.x-3.0),rng.randf_range(3.0,REGION_SIZE.y-3.0))
+		if _is_on_road(candidate,1.0): continue
+		var separated:=true
+		for existing:Vector2 in points:
+			if existing.distance_squared_to(candidate)<14.44: separated=false; break
+		if separated: points.append(candidate)
+	if points.size()>TARGET_TREE_COUNT: points.resize(TARGET_TREE_COUNT)
+	var detailed_transforms:Array[Array]=[[],[],[]]
+	var canopy_transforms:Array[Transform3D]=[]
+	var trunk_transforms:Array[Transform3D]=[]
+	for index in range(points.size()):
+		var point:=points[index]
+		var yaw:=rng.randf_range(0.0,TAU)
+		if index%12==0:
+			var variant:=rng.randi_range(0,2); var model_scale:=rng.randf_range(4.2,6.8)
+			detailed_transforms[variant].append(Transform3D(Basis(Vector3.UP,yaw).scaled(Vector3.ONE*model_scale),Vector3(point.x,height_at(point.x,point.y)+model_scale,point.y)))
+		else:
+			var proxy_scale:=rng.randf_range(0.78,1.38); var basis:=Basis(Vector3.UP,yaw).scaled(Vector3.ONE*proxy_scale)
+			canopy_transforms.append(Transform3D(basis,Vector3(point.x,height_at(point.x,point.y)+6.1*proxy_scale,point.y)))
+			trunk_transforms.append(Transform3D(basis,Vector3(point.x,height_at(point.x,point.y)+2.6*proxy_scale,point.y)))
+	for variant in range(3): _add_scene_chunked_multimesh("StreamedForestTrees_%d"%variant,TREE_SCENES[variant],detailed_transforms[variant])
+	var canopy_mesh:=SphereMesh.new(); canopy_mesh.radius=2.15; canopy_mesh.height=7.2; canopy_mesh.radial_segments=6; canopy_mesh.rings=3
+	var canopy_material:=StandardMaterial3D.new(); canopy_material.albedo_color=Color("244d29"); canopy_material.roughness=0.94; canopy_mesh.material=canopy_material
+	var trunk_mesh:=CylinderMesh.new(); trunk_mesh.top_radius=0.34; trunk_mesh.bottom_radius=0.5; trunk_mesh.height=5.2; trunk_mesh.radial_segments=6
+	var trunk_material:=StandardMaterial3D.new(); trunk_material.albedo_color=Color("4b2c17"); trunk_material.roughness=0.98; trunk_mesh.material=trunk_material
+	_add_chunked_mesh_multimesh("BackgroundForestCanopies",canopy_mesh,canopy_transforms)
+	_add_chunked_mesh_multimesh("BackgroundForestTrunks",trunk_mesh,trunk_transforms)
+
+func _add_scene_chunked_multimesh(instance_name:String,scene:PackedScene,transforms:Array) -> void:
+	if transforms.is_empty(): return
+	var root:=scene.instantiate() as Node3D
+	if root==null: return
+	var nodes:=root.find_children("*","MeshInstance3D",true,false)
+	if not nodes.is_empty(): _add_chunked_mesh_multimesh(instance_name,(nodes[0] as MeshInstance3D).mesh,transforms)
+	root.free()
+
+func _add_chunked_mesh_multimesh(instance_name:String,mesh:Mesh,transforms:Array) -> void:
+	if transforms.is_empty() or mesh==null: return
+	const CHUNK_SIZE:=48.0
+	var chunks:Dictionary={}
+	for value:Variant in transforms:
+		var transform:=value as Transform3D
+		var key:=Vector2i(floori(transform.origin.x/CHUNK_SIZE),floori(transform.origin.z/CHUNK_SIZE))
+		if not chunks.has(key): chunks[key]=[]
+		(chunks[key] as Array).append(transform)
+	for key:Vector2i in chunks:
+		var center:=Vector3((key.x+0.5)*CHUNK_SIZE,0.0,(key.y+0.5)*CHUNK_SIZE)
+		var adjusted:Array[Transform3D]=[]
+		for value:Variant in chunks[key]:
+			var transform:=value as Transform3D; transform.origin-=center; adjusted.append(transform)
+		var chunk_name:="%s_%d_%d"%[instance_name,key.x,key.y]
+		_add_mesh_multimesh(chunk_name,mesh,adjusted,false)
+		var renderer:=get_node(chunk_name) as MultiMeshInstance3D
+		renderer.position=center
+		renderer.visibility_range_end=95.0
+		renderer.visibility_range_end_margin=0.0
+		renderer.visibility_range_fade_mode=GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 
 func begin_stream_fade() -> void:
 	var geometry_nodes := find_children("*","GeometryInstance3D",true,false)
 	for node: GeometryInstance3D in geometry_nodes:
 		node.transparency = 1.0
-		create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT).tween_property(node,"transparency",0.0,0.65)
+		create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT).tween_property(node,"transparency",0.0,1.6)
 
 func _build_grass_and_bushes() -> void:
 	var rng := RandomNumberGenerator.new(); rng.seed = int(descriptor.get("seed", 1)) + 413

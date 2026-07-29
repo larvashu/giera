@@ -540,27 +540,29 @@ func _add_forest_tree(
 	collision_body.add_child(collision)
 
 func _create_tree_multimesh(variant_index: int, transforms: Array) -> void:
-	if transforms.is_empty():
-		return
+	if transforms.is_empty(): return
 	var source_root := PURPLE_TREE_SCENES[variant_index].instantiate() as Node3D
-	if source_root == null:
-		return
-	var mesh_nodes: Array[Node] = source_root.find_children("*", "MeshInstance3D", true, false)
-	if mesh_nodes.is_empty():
-		source_root.free()
-		return
-	var source_mesh_instance := mesh_nodes[0] as MeshInstance3D
-	var multimesh := MultiMesh.new()
-	multimesh.transform_format = MultiMesh.TRANSFORM_3D
-	multimesh.mesh = source_mesh_instance.mesh
-	multimesh.instance_count = transforms.size()
-	for index: int in range(transforms.size()):
-		multimesh.set_instance_transform(index, transforms[index] as Transform3D)
-	var instances := MultiMeshInstance3D.new()
-	instances.name = "ForestTrees_%02d" % (variant_index + 1)
-	instances.multimesh = multimesh
-	instances.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	add_child(instances)
+	if source_root == null: return
+	var mesh_nodes: Array[Node] = source_root.find_children("*","MeshInstance3D",true,false)
+	if mesh_nodes.is_empty(): source_root.free(); return
+	var source_mesh := (mesh_nodes[0] as MeshInstance3D).mesh
+	const CHUNK_SIZE := 48.0
+	var chunks: Dictionary = {}
+	for value: Variant in transforms:
+		var transform := value as Transform3D
+		var key := Vector2i(floori(transform.origin.x/CHUNK_SIZE),floori(transform.origin.z/CHUNK_SIZE))
+		if not chunks.has(key): chunks[key]=[]
+		(chunks[key] as Array).append(transform)
+	for key: Vector2i in chunks:
+		var center := Vector3((key.x+0.5)*CHUNK_SIZE,0.0,(key.y+0.5)*CHUNK_SIZE)
+		var values := chunks[key] as Array
+		var multimesh := MultiMesh.new(); multimesh.transform_format=MultiMesh.TRANSFORM_3D; multimesh.mesh=source_mesh; multimesh.instance_count=values.size()
+		for index in range(values.size()):
+			var transform := values[index] as Transform3D; transform.origin-=center; multimesh.set_instance_transform(index,transform)
+		var instances := MultiMeshInstance3D.new(); instances.name="ForestTrees_%02d_%d_%d"%[variant_index+1,key.x,key.y]; instances.position=center; instances.multimesh=multimesh
+		instances.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		instances.visibility_range_end=105.0
+		add_child(instances)
 	source_root.free()
 
 func _is_in_spawn_clearing(position_2d: Vector2, radius: float) -> bool:
