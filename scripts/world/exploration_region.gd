@@ -116,14 +116,22 @@ func _build_forest() -> void:
 	for variant in range(3): _add_scene_multimesh("ForestTrees_%d" % variant, TREE_SCENES[variant], transforms[variant], false)
 
 func _build_forest_proxy(rng: RandomNumberGenerator) -> void:
-	var tree_mesh := CylinderMesh.new(); tree_mesh.top_radius = 0.25; tree_mesh.bottom_radius = 2.4; tree_mesh.height = 10.0; tree_mesh.radial_segments = 6
-	var material := StandardMaterial3D.new(); material.albedo_color = Color("28532a"); tree_mesh.material = material
-	var transforms: Array[Transform3D] = []
-	for index in range(58):
+	# Streamowane plansze uzywaja tych samych modeli co Dzika Polana, ale rzadszych i bez cieni.
+	# Nie zmieniamy ich po przekroczeniu granicy, wiec drzewa nie przeskakuja miedzy LOD-ami.
+	var transforms: Array[Array] = [[],[],[]]
+	for index in range(54):
 		var point := Vector2(rng.randf_range(4.0,REGION_SIZE.x-4.0),rng.randf_range(4.0,REGION_SIZE.y-4.0))
 		if _is_on_road(point,2.0): continue
-		var scale := rng.randf_range(0.75,1.35); transforms.append(Transform3D(Basis(Vector3.UP,rng.randf_range(0.0,TAU)).scaled(Vector3.ONE*scale),Vector3(point.x,height_at(point.x,point.y)+5.0*scale,point.y)))
-	_add_mesh_multimesh("ForestTreeLOD",tree_mesh,transforms,false)
+		var variant := rng.randi_range(0,2)
+		var scale := rng.randf_range(4.0,6.6)
+		transforms[variant].append(Transform3D(Basis(Vector3.UP,rng.randf_range(0.0,TAU)).scaled(Vector3.ONE*scale),Vector3(point.x,height_at(point.x,point.y)+scale,point.y)))
+	for variant in range(3): _add_scene_multimesh("StreamedForestTrees_%d" % variant,TREE_SCENES[variant],transforms[variant],false)
+
+func begin_stream_fade() -> void:
+	var geometry_nodes := find_children("*","GeometryInstance3D",true,false)
+	for node: GeometryInstance3D in geometry_nodes:
+		node.transparency = 1.0
+		create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT).tween_property(node,"transparency",0.0,0.65)
 
 func _build_grass_and_bushes() -> void:
 	var rng := RandomNumberGenerator.new(); rng.seed = int(descriptor.get("seed", 1)) + 413
