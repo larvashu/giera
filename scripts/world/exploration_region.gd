@@ -10,6 +10,7 @@ const TREE_SCENES: Array[PackedScene] = [
 	preload("res://assets/models/environment/purple_tree_03.glb")
 ]
 const LARGE_TREE_SCENE: PackedScene = preload("res://assets/models/environment/large_tree.glb")
+const GRASS_TEXTURE: Texture2D = preload("res://assets/textures/terrain/realistic_grass.png")
 
 var coordinate := Vector2i.ZERO
 var descriptor: Dictionary = {}
@@ -31,7 +32,6 @@ func _ready() -> void:
 	_detail_noise.seed = int(descriptor.get("seed", 1))
 	_detail_noise.frequency = 0.035
 	_build_terrain()
-	_build_roads()
 	_build_forest()
 	_build_grass_and_bushes()
 	_build_landmarks()
@@ -39,15 +39,51 @@ func _ready() -> void:
 func height_at(local_x: float, local_z: float) -> float:
 	var gx := local_x + coordinate.x * REGION_SIZE.x
 	var gz := local_z + coordinate.y * REGION_SIZE.y
-	return _height_noise.get_noise_2d(gx, gz) * 2.4 + _height_noise.get_noise_2d(gx * 0.28, gz * 0.28) * 1.2
+	# Ten sam drobny profil co centralny GridManager, z lagodnymi globalnymi pagorkami.
+	var result := 0.018 * sin(gx * 0.41 + gz * 0.19)
+	result += 0.012 * cos(gx * 0.23 - gz * 0.37)
+	result += _height_noise.get_noise_2d(gx, gz) * 0.58
+	return result
 
 func _build_terrain() -> void:
 	var mesh := _grid_mesh(false)
 	var terrain := MeshInstance3D.new(); terrain.name = "SeamlessWildClearingTerrain"; terrain.mesh = mesh
-	var material := StandardMaterial3D.new(); material.albedo_color = Color("476f36"); material.roughness = 0.98
-	terrain.material_override = material; add_child(terrain)
+	terrain.material_override = _create_wild_clearing_material(); add_child(terrain)
 	var body := StaticBody3D.new(); body.name = "TerrainCollision"
 	var collision := CollisionShape3D.new(); collision.shape = mesh.create_trimesh_shape(); body.add_child(collision); add_child(body)
+
+func _create_wild_clearing_material() -> ShaderMaterial:
+	var shader := Shader.new()
+	shader.code = """shader_type spatial;
+render_mode diffuse_burley;
+uniform sampler2D grass_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+varying vec3 world_pos;
+float hash2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float noise2(vec2 p){vec2 i=floor(p);vec2 f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(hash2(i),hash2(i+vec2(1,0)),f.x),mix(hash2(i+vec2(0,1)),hash2(i+vec2(1,1)),f.x),f.y);}
+void vertex(){world_pos=(MODEL_MATRIX*vec4(VERTEX,1.0)).xyz;}
+void fragment(){
+ vec2 p=world_pos.xz;
+ vec3 grass=texture(grass_texture,p/4.0).rgb*vec3(0.52,0.82,0.44);
+ float broad=noise2(p*0.032)+noise2(p*0.071+vec2(13.7,4.2))*0.42;
+ float sand_mask=smoothstep(1.02,1.24,broad);
+ float sand_detail=noise2(p*0.82+vec2(2.1,8.6));
+ vec3 sand=mix(vec3(0.42,0.30,0.16),vec3(0.72,0.55,0.32),0.34+sand_detail*0.46);
+ vec3 ground=mix(grass,sand,sand_mask*0.92);
+ vec2 sector=floor(p/vec2(160.0,190.0));
+ vec2 local=p-sector*vec2(160.0,190.0);
+ float ns_x=80.0+sin(p.y*0.055+sector.x*1.7)*12.0;
+ float diagonal_z=30.0+p.x*0.72+sin(p.x*0.09)*6.0;
+ float ew_z=132.0+sin(p.x*0.07+sector.y*1.4)*10.0;
+ float ns=1.0-smoothstep(1.65,2.45,abs(local.x-ns_x));
+ float diagonal=1.0-smoothstep(1.5,2.25,abs(p.y-diagonal_z));
+ float ew=1.0-smoothstep(1.5,2.25,abs(local.y-ew_z));
+ float trail=max(ns,max(diagonal,ew));
+ float trail_detail=noise2(p*0.48+vec2(6.2,19.7));
+ vec3 trail_color=mix(vec3(0.46,0.30,0.08),vec3(0.88,0.68,0.22),0.48+trail_detail*0.38);
+ ALBEDO=mix(ground,trail_color,trail*0.94); ROUGHNESS=mix(0.88,0.76,sand_mask);
+}"""
+	var material := ShaderMaterial.new(); material.shader = shader; material.set_shader_parameter("grass_texture",GRASS_TEXTURE)
+	return material
 
 func _grid_mesh(_unused: bool) -> ArrayMesh:
 	var surface := SurfaceTool.new(); surface.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -88,14 +124,22 @@ func _add_road_segment(surface: SurfaceTool, a: Vector2, b: Vector2, half_width:
 
 func _vertical_road_x(local_z: float) -> float:
 	var global_z := local_z + coordinate.y * REGION_SIZE.y
-	return REGION_SIZE.x * 0.5 + sin(global_z * 0.035) * 13.0
+	return 80.0 + sin(global_z * 0.055 + coordinate.x * 1.7) * 12.0
 
 func _horizontal_road_z(local_x: float) -> float:
 	var global_x := local_x + coordinate.x * REGION_SIZE.x
-	return REGION_SIZE.y * 0.5 + sin(global_x * 0.038) * 14.0
+	return 132.0 + sin(global_x * 0.07 + coordinate.y * 1.4) * 10.0
+
+func _diagonal_road_z(local_x: float) -> float:
+	var global_x := local_x + coordinate.x * REGION_SIZE.x
+	return 30.0 - coordinate.y * REGION_SIZE.y + global_x * 0.72 + sin(global_x * 0.09) * 6.0
 
 func _is_on_road(point: Vector2, margin: float = 0.0) -> bool:
-	return absf(point.x - _vertical_road_x(point.y)) < 5.0 + margin or absf(point.y - _horizontal_road_z(point.x)) < 4.8 + margin
+	return (
+		absf(point.x - _vertical_road_x(point.y)) < 4.8 + margin
+		or absf(point.y - _horizontal_road_z(point.x)) < 4.4 + margin
+		or absf(point.y - _diagonal_road_z(point.x)) < 4.4 + margin
+	)
 
 func _build_forest() -> void:
 	var rng := RandomNumberGenerator.new(); rng.seed = int(descriptor.get("seed", 1))
@@ -119,13 +163,22 @@ func _build_forest_proxy(rng: RandomNumberGenerator) -> void:
 	# Streamowane plansze uzywaja tych samych modeli co Dzika Polana, ale rzadszych i bez cieni.
 	# Nie zmieniamy ich po przekroczeniu granicy, wiec drzewa nie przeskakuja miedzy LOD-ami.
 	var transforms: Array[Array] = [[],[],[]]
-	for index in range(54):
+	for index in range(44):
 		var point := Vector2(rng.randf_range(4.0,REGION_SIZE.x-4.0),rng.randf_range(4.0,REGION_SIZE.y-4.0))
 		if _is_on_road(point,2.0): continue
 		var variant := rng.randi_range(0,2)
 		var scale := rng.randf_range(4.0,6.6)
 		transforms[variant].append(Transform3D(Basis(Vector3.UP,rng.randf_range(0.0,TAU)).scaled(Vector3.ONE*scale),Vector3(point.x,height_at(point.x,point.y)+scale,point.y)))
 	for variant in range(3): _add_scene_multimesh("StreamedForestTrees_%d" % variant,TREE_SCENES[variant],transforms[variant],false)
+	var canopy_mesh := SphereMesh.new(); canopy_mesh.radius = 2.2; canopy_mesh.height = 7.4; canopy_mesh.radial_segments = 8; canopy_mesh.rings = 5
+	var canopy_material := StandardMaterial3D.new(); canopy_material.albedo_color = Color("244d29"); canopy_material.roughness = 0.94; canopy_mesh.material = canopy_material
+	var background_trees: Array[Transform3D] = []
+	for index in range(82):
+		var point := Vector2(rng.randf_range(4.0,REGION_SIZE.x-4.0),rng.randf_range(4.0,REGION_SIZE.y-4.0))
+		if _is_on_road(point,2.0): continue
+		var scale := rng.randf_range(0.78,1.42)
+		background_trees.append(Transform3D(Basis(Vector3.UP,rng.randf_range(0.0,TAU)).scaled(Vector3.ONE*scale),Vector3(point.x,height_at(point.x,point.y)+4.25*scale,point.y)))
+	_add_mesh_multimesh("BackgroundForestCanopies",canopy_mesh,background_trees,false)
 
 func begin_stream_fade() -> void:
 	var geometry_nodes := find_children("*","GeometryInstance3D",true,false)
@@ -139,7 +192,7 @@ func _build_grass_and_bushes() -> void:
 	var grass_material := StandardMaterial3D.new(); grass_material.albedo_color = Color("244f1e"); grass_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; grass_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	grass_mesh.material = grass_material
 	var grass_transforms: Array[Transform3D] = []
-	for index in range(950 if detailed else 220):
+	for index in range(950 if detailed else 650):
 		var p := Vector2(rng.randf_range(1.0,REGION_SIZE.x-1.0),rng.randf_range(1.0,REGION_SIZE.y-1.0))
 		if _is_on_road(p): continue
 		var scale := rng.randf_range(0.7,1.35); grass_transforms.append(Transform3D(Basis(Vector3.UP,rng.randf_range(0.0,TAU)).scaled(Vector3.ONE*scale),Vector3(p.x,height_at(p.x,p.y)+0.3*scale,p.y)))
@@ -147,17 +200,16 @@ func _build_grass_and_bushes() -> void:
 	var bush_mesh := SphereMesh.new(); bush_mesh.radius = 0.55; bush_mesh.height = 0.8; bush_mesh.radial_segments = 8; bush_mesh.rings = 4
 	var bush_material := StandardMaterial3D.new(); bush_material.albedo_color = Color("315e2d"); bush_mesh.material = bush_material
 	var bushes: Array[Transform3D] = []
-	for index in range(170 if detailed else 45):
+	for index in range(170 if detailed else 260):
 		var p := Vector2(rng.randf_range(2.0,REGION_SIZE.x-2.0),rng.randf_range(2.0,REGION_SIZE.y-2.0))
 		if _is_on_road(p,1.0): continue
 		var scale := rng.randf_range(0.8,1.8); bushes.append(Transform3D(Basis(Vector3.UP,rng.randf_range(0.0,TAU)).scaled(Vector3.ONE*scale),Vector3(p.x,height_at(p.x,p.y)+0.35*scale,p.y)))
 	_add_mesh_multimesh("Bushes", bush_mesh, bushes, false)
 
 func _build_landmarks() -> void:
-	if not detailed: return
 	var rng := RandomNumberGenerator.new(); rng.seed = int(descriptor.get("seed", 1)) + 991
 	var transforms: Array[Transform3D] = []
-	for index in range(3):
+	for index in range(3 if detailed else 1):
 		var p := Vector2(rng.randf_range(18.0,REGION_SIZE.x-18.0),rng.randf_range(18.0,REGION_SIZE.y-18.0))
 		if _is_on_road(p,5.0): continue
 		var scale := rng.randf_range(7.0,11.0); transforms.append(Transform3D(Basis(Vector3.UP,rng.randf_range(0.0,TAU)).scaled(Vector3.ONE*scale),Vector3(p.x,height_at(p.x,p.y)+scale,p.y)))
