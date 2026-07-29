@@ -163,7 +163,7 @@ func _build_forest_proxy(rng: RandomNumberGenerator) -> void:
 	# Streamowane plansze uzywaja tych samych modeli co Dzika Polana, ale rzadszych i bez cieni.
 	# Nie zmieniamy ich po przekroczeniu granicy, wiec drzewa nie przeskakuja miedzy LOD-ami.
 	var transforms: Array[Array] = [[],[],[]]
-	for index in range(44):
+	for index in range(52):
 		var point := Vector2(rng.randf_range(4.0,REGION_SIZE.x-4.0),rng.randf_range(4.0,REGION_SIZE.y-4.0))
 		if _is_on_road(point,2.0): continue
 		var variant := rng.randi_range(0,2)
@@ -173,7 +173,7 @@ func _build_forest_proxy(rng: RandomNumberGenerator) -> void:
 	var canopy_mesh := SphereMesh.new(); canopy_mesh.radius = 2.2; canopy_mesh.height = 7.4; canopy_mesh.radial_segments = 8; canopy_mesh.rings = 5
 	var canopy_material := StandardMaterial3D.new(); canopy_material.albedo_color = Color("244d29"); canopy_material.roughness = 0.94; canopy_mesh.material = canopy_material
 	var background_trees: Array[Transform3D] = []
-	for index in range(82):
+	for index in range(170):
 		var point := Vector2(rng.randf_range(4.0,REGION_SIZE.x-4.0),rng.randf_range(4.0,REGION_SIZE.y-4.0))
 		if _is_on_road(point,2.0): continue
 		var scale := rng.randf_range(0.78,1.42)
