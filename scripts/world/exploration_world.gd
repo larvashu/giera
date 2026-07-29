@@ -65,9 +65,13 @@ func _update_streaming(force: bool) -> void:
 			var descriptor := ExplorationWorldCatalog.region_at(world, coordinate)
 			if descriptor.is_empty(): continue
 			wanted[coordinate] = true
+			var needs_detail := coordinate == current_coordinate
+			if loaded_regions.has(coordinate) and (loaded_regions[coordinate] as ExplorationRegion).detailed != needs_detail:
+				(loaded_regions[coordinate] as Node).queue_free()
+				loaded_regions.erase(coordinate)
 			if not loaded_regions.has(coordinate):
 				var region := REGION_SCRIPT.new() as ExplorationRegion
-				region.configure(descriptor)
+				region.configure(descriptor, needs_detail)
 				add_child(region)
 				loaded_regions[coordinate] = region
 	for coordinate: Vector2i in loaded_regions.keys():
@@ -75,7 +79,7 @@ func _update_streaming(force: bool) -> void:
 			(loaded_regions[coordinate] as Node).queue_free()
 			loaded_regions.erase(coordinate)
 	var active := ExplorationWorldCatalog.region_at(world, current_coordinate)
-	status_label.text = "%s  |  biom: %s  |  zaladowane regiony: %d/50" % [active.get("name", "Poza swiatem"), active.get("biome", "-"), loaded_regions.size()]
+	status_label.text = "%s  |  warstwa: %s/4  |  zaladowane plansze: %d/49" % [active.get("name", "Poza swiatem"), active.get("layer", "-"), loaded_regions.size()]
 
 func _build_player() -> void:
 	player = CharacterBody3D.new()
