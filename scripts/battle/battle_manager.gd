@@ -182,7 +182,8 @@ func _on_turn_started(unit: TacticalUnit) -> void:
 		turn_manager.end_current_turn()
 		return
 	var is_enemy := unit.faction == TacticalUnit.Faction.ENEMY
-	_input_enabled = not is_enemy and game_session.is_team_locally_controllable(unit.team_id)
+	var is_locally_controlled := game_session.is_team_locally_controllable(unit.team_id)
+	_input_enabled = is_locally_controlled
 	_clear_pending_targets()
 	_selected_ability_index = -1
 	_selected_ability_name = ""
@@ -191,9 +192,11 @@ func _on_turn_started(unit: TacticalUnit) -> void:
 		grid_manager.clear_danger_zone()
 		_on_unit_selected(unit)
 		_refresh_movement_highlights()
-	elif is_enemy or game_session.should_auto_skip_team(unit.team_id):
+	elif not is_locally_controlled:
 		grid_manager.clear_highlights()
-		grid_manager.show_enemy_range(unit)
+		if is_enemy:
+			grid_manager.show_enemy_range(unit)
+			tactical_camera.focus_on_unit(unit)
 		_execute_enemy_turn(unit)
 	else:
 		grid_manager.clear_highlights()
@@ -377,6 +380,7 @@ func _execute_enemy_turn(unit: TacticalUnit) -> void:
 		await _ai_move_towards(unit, target)
 		if is_instance_valid(unit):
 			grid_manager.show_enemy_range(unit)
+			tactical_camera.focus_on_unit(unit)
 
 	if is_instance_valid(unit) and not unit.is_dead() and is_instance_valid(target) and not target.is_dead():
 		if _is_adjacent(unit.grid_position, target.grid_position):

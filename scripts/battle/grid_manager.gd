@@ -20,6 +20,7 @@ const DIRECTIONS: Array[Vector2i] = [
 @export var player_positions: Array[Vector2i] = [Vector2i(78, 9), Vector2i(81, 9)]
 @export var enemy_positions: Array[Vector2i] = [Vector2i(78, 180), Vector2i(81, 180)]
 
+var _arena_rect: Rect2i  # When has_area(), restricts the playable grid to this rectangle
 var _occupancy: Dictionary[Vector2i, TacticalUnit] = {}
 var _blocked_cells: Dictionary[Vector2i, bool] = {}
 var _highlight_markers: Dictionary[Vector2i, MeshInstance3D] = {}
@@ -38,10 +39,17 @@ func _ready() -> void:
 	await _load_selected_terrain()
 	_initialize_terrain_features()
 	_build_grid()
+	if _arena_rect.has_area() and _terrain_material != null:
+		_terrain_material.set_shader_parameter("show_trails", false)
 
 func _load_selected_terrain() -> void:
 	var session := get_node_or_null("/root/GameSession") as GameSessionState
 	if session == null or session.selected_map_id == "builtin:forest":
+		return
+	if session.selected_map_id == "builtin:arena":
+		_arena_rect = Rect2i(65, 77, 30, 28)
+		player_positions = [Vector2i(73, 82), Vector2i(86, 82)]
+		enemy_positions = [Vector2i(73, 100), Vector2i(86, 100)]
 		return
 	var catalog := get_node_or_null("/root/MapCatalog") as MapCatalogService
 	if catalog == null:
@@ -305,8 +313,12 @@ func move_occupant(unit: TacticalUnit, destination: Vector2i) -> bool:
 
 func relocate_occupant_from_world(unit: TacticalUnit, world_position: Vector3) -> Vector2i:
 	var preferred := Vector2i(roundi(world_position.x), roundi(world_position.z))
-	preferred.x = clampi(preferred.x, 0, GRID_WIDTH - 1)
-	preferred.y = clampi(preferred.y, 0, GRID_HEIGHT - 1)
+	if _arena_rect.has_area():
+		preferred.x = clampi(preferred.x, _arena_rect.position.x, _arena_rect.end.x - 1)
+		preferred.y = clampi(preferred.y, _arena_rect.position.y, _arena_rect.end.y - 1)
+	else:
+		preferred.x = clampi(preferred.x, 0, GRID_WIDTH - 1)
+		preferred.y = clampi(preferred.y, 0, GRID_HEIGHT - 1)
 	var destination := _find_nearest_free_cell(preferred, unit)
 	_occupancy.erase(unit.grid_position)
 	_occupancy[destination] = unit
@@ -349,6 +361,8 @@ func cell_to_world(cell: Vector2i) -> Vector3:
 	return Vector3(float(cell.x) * CELL_SIZE, terrain_height(float(cell.x), float(cell.y)), float(cell.y) * CELL_SIZE)
 
 func is_inside_grid(cell: Vector2i) -> bool:
+	if _arena_rect.has_area():
+		return _arena_rect.has_point(cell)
 	return cell.x >= 0 and cell.x < GRID_WIDTH and cell.y >= 0 and cell.y < GRID_HEIGHT
 
 func terrain_height(world_x: float, world_z: float) -> float:
@@ -435,6 +449,7 @@ render_mode diffuse_burley;
 uniform sampler2D grass_texture : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec2 grid_size = vec2(50.0, 60.0);
 uniform bool grid_visible = false;
+uniform bool show_trails = true;
 
 float terrain_hash(vec2 point) {
 	return fract(sin(dot(point, vec2(127.1, 311.7))) * 43758.5453);
@@ -480,7 +495,9 @@ void fragment() {
 	vec3 trail_dark = vec3(0.46, 0.30, 0.08);
 	vec3 trail_yellow = vec3(0.88, 0.68, 0.22);
 	vec3 trail_color = mix(trail_dark, trail_yellow, 0.48 + trail_detail * 0.38);
-	ground_color = mix(ground_color, trail_color, trail_mask * 0.94);
+	if (show_trails) {
+		ground_color = mix(ground_color, trail_color, trail_mask * 0.94);
+	}
 
 	float visible_grid = grid_visible ? grid_line : 0.0;
 	ALBEDO = mix(ground_color, vec3(0.04, 0.07, 0.04), visible_grid * 0.82);

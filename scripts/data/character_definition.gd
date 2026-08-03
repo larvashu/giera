@@ -16,3 +16,4 @@ extends Resource
 @export_range(0.5, 2.5, 0.1) var visual_scale: float = 1.0
 @export var visual_offset: Vector3 = Vector3.ZERO
 @export var visual_rotation_degrees: Vector3 = Vector3.ZERO
+@export var is_mob: bool = false

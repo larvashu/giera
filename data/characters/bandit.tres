@@ -18,3 +18,4 @@ visual_color = Color(0.72, 0.52, 0.32, 1)
 visual_scale = 0.72
 visual_offset = Vector3(0, 0.36, 0)
 visual_rotation_degrees = Vector3(0, 180, 0)
+is_mob = true

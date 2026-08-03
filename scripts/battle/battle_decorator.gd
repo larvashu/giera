@@ -34,6 +34,10 @@ var _rock_material: StandardMaterial3D
 
 func _ready() -> void:
 	_create_materials()
+	var session := get_node_or_null("/root/GameSession") as GameSessionState
+	if session != null and session.selected_map_id == "builtin:arena":
+		_create_arena_decoration()
+		return
 	_create_forest()
 	_create_landmark_trees()
 	_create_grass_scatter()
@@ -47,6 +51,80 @@ func _create_materials() -> void:
 	_grass_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_grass_dark_material = _material(Color(0.06, 0.22, 0.07, 1.0), 1.0)
 	_rock_material = _material(Color(0.27, 0.29, 0.27, 1.0), 1.0)
+
+func _create_arena_decoration() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 44_772_019
+
+	# Arena bounds: must match _arena_rect in GridManager (Rect2i(65, 77, 30, 28))
+	const ARENA_X: int = 65
+	const ARENA_Y: int = 77
+	const ARENA_W: int = 30
+	const ARENA_H: int = 28
+
+	var tree_transforms: Array[Array] = [[], [], []]
+	var collision_body := StaticBody3D.new()
+	collision_body.name = "ArenaCollisions"
+	collision_body.collision_layer = 1
+	collision_body.collision_mask = 0
+	add_child(collision_body)
+
+	# --- Square border: dense tree wall along all 4 edges ---
+	const BORDER_STEP: int = 2
+	var border_cells: Array[Vector2i] = []
+	for x: int in range(ARENA_X, ARENA_X + ARENA_W, BORDER_STEP):
+		border_cells.append(Vector2i(x, ARENA_Y))
+		border_cells.append(Vector2i(x, ARENA_Y + ARENA_H - 1))
+	for y: int in range(ARENA_Y + BORDER_STEP, ARENA_Y + ARENA_H - BORDER_STEP, BORDER_STEP):
+		border_cells.append(Vector2i(ARENA_X, y))
+		border_cells.append(Vector2i(ARENA_X + ARENA_W - 1, y))
+
+	for cell: Vector2i in border_cells:
+		grid_manager.block_cell(cell)
+		var jitter := Vector2(rng.randf_range(-0.2, 0.2), rng.randf_range(-0.2, 0.2))
+		var p := Vector2(float(cell.x), float(cell.y)) + jitter
+		var variant_index: int = rng.randi_range(0, PURPLE_TREE_SCENES.size() - 1)
+		var scale_value: float = rng.randf_range(2.0, 3.0) * rng.randf_range(1.8, 2.5)
+		var world_pos := Vector3(p.x, grid_manager.terrain_height(p.x, p.y), p.y)
+		var tilt := Vector3(deg_to_rad(rng.randf_range(-4.0, 4.0)), rng.randf_range(0.0, TAU), deg_to_rad(rng.randf_range(-4.0, 4.0)))
+		tree_transforms[variant_index].append(Transform3D(Basis.from_euler(tilt).scaled(Vector3.ONE * scale_value), world_pos + Vector3.UP * scale_value))
+		var col := CollisionShape3D.new()
+		var shape := CylinderShape3D.new()
+		shape.radius = minf(0.14 * scale_value, 1.0)
+		shape.height = 1.5 * scale_value
+		col.shape = shape
+		col.position = world_pos + Vector3.UP * (0.75 * scale_value)
+		collision_body.add_child(col)
+
+	# --- Interior obstacle trees — spread across the playing field ---
+	# Spawns: players (~73/86, 82), enemies (~73/86, 100). Keep 5-cell clear zone.
+	const OBSTACLE_TREES: Array[Vector2] = [
+		Vector2(71, 89), Vector2(89, 88),
+		Vector2(80, 87), Vector2(79, 94),
+		Vector2(75, 91), Vector2(85, 92),
+		Vector2(68, 93), Vector2(92, 90),
+	]
+
+	for base_pos: Vector2 in OBSTACLE_TREES:
+		var jitter := Vector2(rng.randf_range(-0.7, 0.7), rng.randf_range(-0.7, 0.7))
+		var p := base_pos + jitter
+		var cell := Vector2i(roundi(p.x), roundi(p.y))
+		grid_manager.block_cell(cell)
+		var variant_index: int = rng.randi_range(0, PURPLE_TREE_SCENES.size() - 1)
+		var scale_value: float = rng.randf_range(1.8, 2.5) * rng.randf_range(1.8, 2.4)
+		var world_pos := Vector3(p.x, grid_manager.terrain_height(p.x, p.y), p.y)
+		var tilt := Vector3(deg_to_rad(rng.randf_range(-3.0, 3.0)), rng.randf_range(0.0, TAU), deg_to_rad(rng.randf_range(-3.0, 3.0)))
+		tree_transforms[variant_index].append(Transform3D(Basis.from_euler(tilt).scaled(Vector3.ONE * scale_value), world_pos + Vector3.UP * scale_value))
+		var col := CollisionShape3D.new()
+		var shape := CylinderShape3D.new()
+		shape.radius = minf(0.16 * scale_value, 1.2)
+		shape.height = 1.5 * scale_value
+		col.shape = shape
+		col.position = world_pos + Vector3.UP * (0.75 * scale_value)
+		collision_body.add_child(col)
+
+	for v: int in range(PURPLE_TREE_SCENES.size()):
+		_create_tree_multimesh(v, tree_transforms[v])
 
 func _create_tree(cell: Vector2i) -> void:
 	var tree := StaticBody3D.new()
