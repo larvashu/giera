@@ -9,6 +9,39 @@ func _ready() -> void:
 	_configure_moonlit_environment()
 	_configure_moon_light()
 
+func _configure_arena_environment() -> void:
+	var env := environment.duplicate(true) as Environment if environment != null else Environment.new()
+	env.background_mode = Environment.BG_SKY
+	env.background_energy_multiplier = 1.0
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.85, 0.82, 0.78)
+	env.ambient_light_energy = 1.2
+	env.tonemap_mode = Environment.TONE_MAPPER_AGX
+	env.tonemap_exposure = 1.0
+	env.glow_enabled = false
+	env.ssao_enabled = false
+	env.fog_enabled = false
+	env.volumetric_fog_enabled = false
+	var sky_mat := ProceduralSkyMaterial.new()
+	sky_mat.sky_top_color = Color(0.35, 0.55, 0.85)
+	sky_mat.sky_horizon_color = Color(0.68, 0.78, 0.90)
+	sky_mat.ground_bottom_color = Color(0.25, 0.22, 0.18)
+	sky_mat.ground_horizon_color = Color(0.55, 0.50, 0.44)
+	sky_mat.sun_angle_max = 30.0
+	var sky := Sky.new()
+	sky.sky_material = sky_mat
+	env.sky = sky
+	environment = env
+	if sun != null:
+		sun.rotation_degrees = Vector3(-52.0, 35.0, 0.0)
+		sun.light_color = Color(1.0, 0.95, 0.85)
+		sun.light_energy = 1.8
+		sun.light_indirect_energy = 1.0
+		sun.shadow_enabled = true
+		sun.shadow_blur = 0.8
+		sun.shadow_bias = 0.05
+		sun.shadow_normal_bias = 1.0
+
 func _configure_moonlit_environment() -> void:
 	var battle_environment := environment.duplicate(true) as Environment if environment != null else Environment.new()
 	battle_environment.background_mode = Environment.BG_SKY

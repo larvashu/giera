@@ -2,7 +2,7 @@ class_name ArenaSetup
 extends Control
 
 # ── Player identity ────────────────────────────────────────────────────────
-const PLAYER_LABELS := ["GRACZ JEDEN", "GRACZ DWA", "GRACZ TRZY", "GRACZ CZTERY"]
+const PLAYER_LABELS := ["PLAYER ONE", "PLAYER TWO", "PLAYER THREE", "PLAYER FOUR"]
 const PLAYER_ACCENTS: Array[Color] = [
 	Color(0.792, 0.333, 0.318),  # P1 red
 	Color(0.706, 0.475, 0.0),    # P2 gold
@@ -38,6 +38,7 @@ const C_ICON_BG   := Color(0.145, 0.11,  0.094)
 var _step: int = 0  # 0=setup  1=draft  2=confirm
 var _player_count: int = 2
 var _champ_count: int = 2
+var _arena_size_idx: int = 1  # 0=Kwadrat 1=Normalna 2=Duza 3=BardzoD.
 var _picks: Array = []   # _picks[pi][si] = StringName or null
 var _readies: Array = []
 var _chars: Array[CharacterDefinition] = []
@@ -52,6 +53,7 @@ var _player_cards: Array[Control] = []
 var _player_num_lbls: Array[Label] = []
 var _champ_cards: Array[Control] = []
 var _champ_num_lbls: Array[Label] = []
+var _size_cards: Array[Control] = []
 
 # ── Draft screen refs ──────────────────────────────────────────────────────
 var _summary_lbl: Label
@@ -180,6 +182,43 @@ func _build_setup_screen() -> void:
 		cards_row.add_child(card)
 	_update_selector_cards(_champ_cards, _champ_num_lbls, _champ_count)
 
+	# Map size section
+	var size_sec := VBoxContainer.new()
+	size_sec.add_theme_constant_override("separation", 12)
+	vbox.add_child(size_sec)
+
+	var size_lbl := _lbl("MAP SIZE", 13, C_MUTED)
+	size_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	size_sec.add_child(size_lbl)
+
+	var size_row := HBoxContainer.new()
+	size_row.add_theme_constant_override("separation", 12)
+	size_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	size_sec.add_child(size_row)
+
+	const SIZE_LABELS := ["SMALL", "NORMAL", "LARGE", "VERY\nLARGE"]
+	_size_cards.clear()
+	for si: int in SIZE_LABELS.size():
+		var card := PanelContainer.new()
+		card.custom_minimum_size = Vector2(100, 0)
+		card.set_meta("n", si)
+		card.mouse_filter = Control.MOUSE_FILTER_STOP
+		card.gui_input.connect(func(e: InputEvent) -> void:
+			if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+				_arena_size_idx = si
+				_update_size_cards()
+		)
+		var mg := MarginContainer.new()
+		for side: String in ["left", "right", "top", "bottom"]:
+			mg.add_theme_constant_override("margin_" + side, 14)
+		card.add_child(mg)
+		var lbl := _lbl(SIZE_LABELS[si], 10, C_MUTED)
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		mg.add_child(lbl)
+		_size_cards.append(card)
+		size_row.add_child(card)
+	_update_size_cards()
+
 	# Buttons row
 	var btn_row := HBoxContainer.new()
 	btn_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -248,6 +287,15 @@ func _make_selector_card(
 	cards_arr.append(panel)
 	return panel
 
+
+func _update_size_cards() -> void:
+	for card: Control in _size_cards:
+		var si: int = card.get_meta("n")
+		var sel := (si == _arena_size_idx)
+		_panel_style(card, C_PANEL, C_GOLD if sel else C_BORDER_U)
+		var lbl := card.get_child(0).get_child(0) as Label
+		if lbl:
+			lbl.add_theme_color_override("font_color", C_TEXT if sel else C_MUTED)
 
 func _update_selector_cards(cards_arr: Array[Control], lbls_arr: Array[Label], selected: int) -> void:
 	for i: int in cards_arr.size():
@@ -583,35 +631,36 @@ func _on_begin_battle() -> void:
 # ══════════════════════════════════════════════════════════════════════════
 
 func _build_confirm_screen() -> void:
-	var vbox := VBoxContainer.new()
-	vbox.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	vbox.add_theme_constant_override("separation", 20)
-	add_child(vbox)
-	_screen_confirm = vbox
+	var root := CenterContainer.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(root)
+	_screen_confirm = root
 
+	var vbox := VBoxContainer.new()
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 32)
+	vbox.custom_minimum_size = Vector2(700, 0)
+	root.add_child(vbox)
+
+	# Header
 	var header := VBoxContainer.new()
-	header.add_theme_constant_override("separation", 8)
+	header.add_theme_constant_override("separation", 6)
 	vbox.add_child(header)
 
-	var gates := _lbl("THE GATES OPEN", 15, C_MUTED)
+	var gates := _lbl("THE GATES OPEN", 13, C_MUTED)
 	gates.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	header.add_child(gates)
 
-	var assembled := _lbl("CHAMPIONS ASSEMBLED", 36, C_TEXT)
+	var assembled := _lbl("CHAMPIONS ASSEMBLED", 34, C_TEXT)
 	assembled.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	header.add_child(assembled)
 
 	# Roster panels
-	var roster_margin := MarginContainer.new()
-	roster_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	for side: String in ["left", "right"]:
-		roster_margin.add_theme_constant_override("margin_" + side, 80)
-	vbox.add_child(roster_margin)
-
 	_roster_box = HBoxContainer.new()
-	_roster_box.add_theme_constant_override("separation", 0)
-	roster_margin.add_child(_roster_box)
+	_roster_box.add_theme_constant_override("separation", 16)
+	_roster_box.alignment = BoxContainer.ALIGNMENT_CENTER
+	_roster_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.add_child(_roster_box)
 
 	# Footer
 	var footer := VBoxContainer.new()
@@ -640,31 +689,32 @@ func _rebuild_confirm() -> void:
 		child.queue_free()
 
 	for pi: int in _player_count:
-		if pi > 0:
-			var div := ColorRect.new()
-			div.color = C_DIVIDER
-			div.custom_minimum_size = Vector2(1, 0)
-			div.size_flags_vertical = Control.SIZE_EXPAND_FILL
-			_roster_box.add_child(div)
 		_roster_box.add_child(_build_roster_panel(pi))
 
 
 func _build_roster_panel(pi: int) -> Control:
-	var vbox := VBoxContainer.new()
-	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	vbox.add_theme_constant_override("separation", 0)
+	var panel := PanelContainer.new()
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_panel_style(panel, C_PANEL, PLAYER_ACCENTS[pi])
 
 	var margin := MarginContainer.new()
 	for side: String in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 20 if side in ["left", "right"] else 16)
-	vbox.add_child(margin)
+	panel.add_child(margin)
 
 	var inner := VBoxContainer.new()
 	inner.add_theme_constant_override("separation", 10)
 	margin.add_child(inner)
 
-	var p_lbl := _lbl(PLAYER_LABELS[pi], 13, PLAYER_ACCENTS[pi])
+	var p_lbl := _lbl(PLAYER_LABELS[pi], 11, PLAYER_ACCENTS[pi])
 	inner.add_child(p_lbl)
+
+	# Accent divider under player name
+	var div := ColorRect.new()
+	div.color = PLAYER_ACCENTS[pi]
+	div.color.a = 0.3
+	div.custom_minimum_size = Vector2(0, 1)
+	inner.add_child(div)
 
 	for si: int in _champ_count:
 		var char_id = _picks[pi][si] if si < _picks[pi].size() else null
@@ -677,7 +727,7 @@ func _build_roster_panel(pi: int) -> Control:
 		var entry_margin := MarginContainer.new()
 		for side: String in ["left", "right", "top", "bottom"]:
 			entry_margin.add_theme_constant_override("margin_" + side, 10)
-		_panel_style(entry_margin, C_PANEL, C_BORDER)
+		_panel_style(entry_margin, Color(0.12, 0.075, 0.063), C_BORDER)
 		inner.add_child(entry_margin)
 
 		var entry := HBoxContainer.new()
@@ -704,18 +754,16 @@ func _build_roster_panel(pi: int) -> Control:
 		text_vb.add_child(_lbl(def.display_name.to_upper(), 12, C_TEXT))
 		text_vb.add_child(_lbl(def.role_name.to_upper(), 9, PLAYER_ACCENTS[pi]))
 
-	return vbox
+	return panel
 
 
 func _on_enter_arena() -> void:
 	game_session.selected_map_id = "builtin:arena"
-	# configure_hotseat supports 2 teams — use first two players
-	game_session.configure_hotseat(
-		PLAYER_LABELS[0],
-		PLAYER_LABELS[1],
-		_build_team(0, "arena_p1"),
-		_build_team(1, "arena_p2")
-	)
+	game_session.arena_size_index = _arena_size_idx
+	var teams: Array = []
+	for pi: int in range(_player_count):
+		teams.append(_build_team(pi, "arena_p%d" % (pi + 1)))
+	game_session.configure_arena(_player_count, PLAYER_LABELS, teams)
 	get_tree().change_scene_to_file("res://scenes/battle/battle.tscn")
 
 
@@ -787,14 +835,36 @@ func _style_begin_btn(ready: bool) -> void:
 func _style_ready_btn(btn: Button, pi: int, ready: bool, full: bool) -> void:
 	var accent := PLAYER_ACCENTS[pi]
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = PICKED_BGS[pi] if ready else Color(0, 0, 0, 0)
-	sb.border_color = accent if ready else (C_BORDER if not full else Color(0.341, 0.259, 0.235))
+	var sb_h := StyleBoxFlat.new()
+	if ready:
+		# Confirmed — filled accent bg, slightly darker on hover
+		sb.bg_color = PICKED_BGS[pi]
+		sb.border_color = accent
+		sb_h.bg_color = PICKED_BGS[pi]
+		sb_h.border_color = accent
+		btn.add_theme_color_override("font_color", accent)
+		btn.add_theme_color_override("font_hover_color", accent)
+	elif full:
+		# All slots filled — prominent CTA: solid accent fill
+		sb.bg_color = accent
+		sb.border_color = accent
+		sb_h.bg_color = accent.lightened(0.15)
+		sb_h.border_color = accent.lightened(0.15)
+		btn.add_theme_color_override("font_color", C_ON_GOLD)
+		btn.add_theme_color_override("font_hover_color", C_ON_GOLD)
+	else:
+		# Incomplete — ghost style
+		sb.bg_color = Color(0, 0, 0, 0)
+		sb.border_color = C_BORDER
+		sb_h.bg_color = Color(0, 0, 0, 0)
+		sb_h.border_color = C_BORDER
+		btn.add_theme_color_override("font_color", C_MUTED)
+		btn.add_theme_color_override("font_hover_color", C_MUTED)
 	sb.set_border_width_all(1)
+	sb_h.set_border_width_all(1)
 	btn.add_theme_stylebox_override("normal", sb)
-	btn.add_theme_stylebox_override("hover", sb)
+	btn.add_theme_stylebox_override("hover", sb_h)
 	btn.add_theme_stylebox_override("pressed", sb)
-	btn.add_theme_color_override("font_color", accent if ready else C_MUTED)
-	btn.add_theme_color_override("font_hover_color", accent if ready else C_TEXT)
 	btn.modulate.a = 1.0 if full else 0.4
 
 

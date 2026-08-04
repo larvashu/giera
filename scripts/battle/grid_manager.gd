@@ -47,9 +47,27 @@ func _load_selected_terrain() -> void:
 	if session == null or session.selected_map_id == "builtin:forest":
 		return
 	if session.selected_map_id == "builtin:arena":
-		_arena_rect = Rect2i(65, 77, 30, 28)
-		player_positions = [Vector2i(73, 82), Vector2i(86, 82)]
-		enemy_positions = [Vector2i(73, 100), Vector2i(86, 100)]
+		const ARENA_RECTS: Array[Rect2i] = [
+			Rect2i(71, 86, 18, 18),  # 0 Small
+			Rect2i(65, 80, 30, 30),  # 1 Normal
+			Rect2i(59, 74, 42, 42),  # 2 Large
+			Rect2i(52, 67, 56, 56),  # 3 Very Large
+		]
+		var si := clampi(session.arena_size_index, 0, ARENA_RECTS.size() - 1)
+		_arena_rect = ARENA_RECTS[si]
+		var ax := _arena_rect.position.x
+		var ay := _arena_rect.position.y
+		var aw := _arena_rect.size.x
+		var ah := _arena_rect.size.y
+		player_positions = [
+			Vector2i(ax + aw / 4,     ay + 5),
+			Vector2i(ax + aw * 3 / 4, ay + 5),
+		]
+		enemy_positions = [
+			Vector2i(ax + aw / 4,     ay + ah - 6),
+			Vector2i(ax + aw * 3 / 4, ay + ah - 6),
+		]
+		_use_procedural_features = false
 		return
 	var catalog := get_node_or_null("/root/MapCatalog") as MapCatalogService
 	if catalog == null:
@@ -69,6 +87,9 @@ func _load_selected_terrain() -> void:
 	_water_surface.setup(_terrain_surface)
 	add_child(_water_surface)
 	_water_surface.load_cells(data.get("water_cells", []) as Array)
+
+func get_arena_rect() -> Rect2i:
+	return _arena_rect
 
 func block_cell(cell: Vector2i) -> void:
 	if is_inside_grid(cell):
@@ -161,6 +182,40 @@ func spawn_configured_teams(
 		_spawn_character(team_one[index], catalog, 1, 0, team_one_positions[index])
 	for index: int in range(mini(team_two.size(), team_two_positions.size())):
 		_spawn_character(team_two[index], catalog, 2, 1, team_two_positions[index])
+
+func spawn_arena_teams(session: GameSessionState, catalog: TeamSaveService) -> void:
+	var ax := _arena_rect.position.x
+	var ay := _arena_rect.position.y
+	var aw := _arena_rect.size.x
+	var ah := _arena_rect.size.y
+	var q1x := ax + aw / 4
+	var q3x := ax + aw * 3 / 4
+	var ny  := ay + 5
+	var sy  := ay + ah - 6
+	var anchors_table: Array = []
+	if session.player_count <= 2:
+		anchors_table = [
+			[Vector2i(q1x, ny), Vector2i(q3x, ny)],
+			[Vector2i(q1x, sy), Vector2i(q3x, sy)],
+		]
+	else:
+		anchors_table = [
+			[Vector2i(q1x - 2, ny), Vector2i(q1x + 2, ny)],
+			[Vector2i(q3x - 2, ny), Vector2i(q3x + 2, ny)],
+			[Vector2i(q1x - 2, sy), Vector2i(q1x + 2, sy)],
+			[Vector2i(q3x - 2, sy), Vector2i(q3x + 2, sy)],
+		]
+	for i: int in range(session.player_count):
+		if i >= anchors_table.size():
+			break
+		var pid := i + 1
+		var composition := session.get_composition(pid)
+		var typed_anchors: Array[Vector2i] = []
+		for a: Variant in anchors_table[i]:
+			typed_anchors.append(a as Vector2i)
+		var positions := _expanded_spawn_positions(typed_anchors)
+		for si: int in range(mini(composition.size(), positions.size())):
+			_spawn_character(composition[si], catalog, pid, i, positions[si])
 
 func _expanded_spawn_positions(anchors: Array[Vector2i]) -> Array[Vector2i]:
 	var result: Array[Vector2i] = anchors.duplicate()
@@ -450,6 +505,7 @@ uniform sampler2D grass_texture : source_color, filter_linear_mipmap_anisotropic
 uniform vec2 grid_size = vec2(50.0, 60.0);
 uniform bool grid_visible = false;
 uniform bool show_trails = true;
+uniform bool is_arena = false;
 
 float terrain_hash(vec2 point) {
 	return fract(sin(dot(point, vec2(127.1, 311.7))) * 43758.5453);
@@ -467,41 +523,57 @@ float terrain_noise(vec2 point) {
 }
 
 void fragment() {
-	vec3 grass = texture(grass_texture, UV * grid_size / 4.0).rgb;
 	vec2 scaled_uv = UV * grid_size;
 	vec2 cell = fract(scaled_uv);
 	vec2 edge = min(cell, vec2(1.0) - cell);
 	float grid_line = 1.0 - smoothstep(0.02, 0.055, min(edge.x, edge.y));
-	float checker = mod(floor(scaled_uv.x) + floor(scaled_uv.y), 2.0);
-	vec3 natural_grass = grass * vec3(0.52, 0.82, 0.44) * mix(0.94, 1.08, checker);
 
-	float broad_noise = terrain_noise(scaled_uv * 0.032);
-	broad_noise += terrain_noise(scaled_uv * 0.071 + vec2(13.7, 4.2)) * 0.42;
-	float sand_mask = smoothstep(1.02, 1.24, broad_noise);
-	float sand_detail = terrain_noise(scaled_uv * 0.82 + vec2(2.1, 8.6));
-	vec3 sand_dark = vec3(0.42, 0.30, 0.16);
-	vec3 sand_light = vec3(0.72, 0.55, 0.32);
-	vec3 sand = mix(sand_dark, sand_light, 0.34 + sand_detail * 0.46);
-	vec3 ground_color = mix(natural_grass, sand, sand_mask * 0.92);
+	vec3 ground_color;
+	float roughness;
 
-	float north_south_x = grid_size.x * 0.5 + sin(scaled_uv.y * 0.055) * 12.0;
-	float diagonal_z = 30.0 + scaled_uv.x * 0.72 + sin(scaled_uv.x * 0.09) * 6.0;
-	float east_west_z = 132.0 + sin(scaled_uv.x * 0.07) * 10.0;
-	float north_south_trail = 1.0 - smoothstep(1.65, 2.45, abs(scaled_uv.x - north_south_x));
-	float diagonal_trail = 1.0 - smoothstep(1.5, 2.25, abs(scaled_uv.y - diagonal_z));
-	float east_west_trail = 1.0 - smoothstep(1.5, 2.25, abs(scaled_uv.y - east_west_z));
-	float trail_mask = max(north_south_trail, max(diagonal_trail, east_west_trail));
-	float trail_detail = terrain_noise(scaled_uv * 0.48 + vec2(6.2, 19.7));
-	vec3 trail_dark = vec3(0.46, 0.30, 0.08);
-	vec3 trail_yellow = vec3(0.88, 0.68, 0.22);
-	vec3 trail_color = mix(trail_dark, trail_yellow, 0.48 + trail_detail * 0.38);
-	if (show_trails) {
-		ground_color = mix(ground_color, trail_color, trail_mask * 0.94);
+	if (is_arena) {
+		// Arena floor: packed sand/dirt with stone variation
+		float coarse = terrain_noise(scaled_uv * 0.018 + vec2(3.1, 7.4));
+		float fine   = terrain_noise(scaled_uv * 0.14  + vec2(1.2, 9.8));
+		float detail = terrain_noise(scaled_uv * 0.55  + vec2(6.3, 2.1));
+		vec3 sand_dark  = vec3(0.38, 0.29, 0.18);
+		vec3 sand_mid   = vec3(0.54, 0.42, 0.26);
+		vec3 sand_light = vec3(0.68, 0.55, 0.36);
+		ground_color = mix(sand_dark, sand_mid, coarse * 0.7 + fine * 0.3);
+		ground_color = mix(ground_color, sand_light, detail * 0.28);
+		roughness = 0.92;
+	} else {
+		float checker = mod(floor(scaled_uv.x) + floor(scaled_uv.y), 2.0);
+		vec3 grass = texture(grass_texture, UV * grid_size / 4.0).rgb;
+		vec3 natural_grass = grass * vec3(0.52, 0.82, 0.44) * mix(0.94, 1.08, checker);
+		float broad_noise = terrain_noise(scaled_uv * 0.032);
+		broad_noise += terrain_noise(scaled_uv * 0.071 + vec2(13.7, 4.2)) * 0.42;
+		float sand_mask = smoothstep(1.02, 1.24, broad_noise);
+		float sand_detail = terrain_noise(scaled_uv * 0.82 + vec2(2.1, 8.6));
+		vec3 sand_dark = vec3(0.42, 0.30, 0.16);
+		vec3 sand_light = vec3(0.72, 0.55, 0.32);
+		vec3 sand = mix(sand_dark, sand_light, 0.34 + sand_detail * 0.46);
+		ground_color = mix(natural_grass, sand, sand_mask * 0.92);
+		float north_south_x = grid_size.x * 0.5 + sin(scaled_uv.y * 0.055) * 12.0;
+		float diagonal_z = 30.0 + scaled_uv.x * 0.72 + sin(scaled_uv.x * 0.09) * 6.0;
+		float east_west_z = 132.0 + sin(scaled_uv.x * 0.07) * 10.0;
+		float north_south_trail = 1.0 - smoothstep(1.65, 2.45, abs(scaled_uv.x - north_south_x));
+		float diagonal_trail = 1.0 - smoothstep(1.5, 2.25, abs(scaled_uv.y - diagonal_z));
+		float east_west_trail = 1.0 - smoothstep(1.5, 2.25, abs(scaled_uv.y - east_west_z));
+		float trail_mask = max(north_south_trail, max(diagonal_trail, east_west_trail));
+		float trail_detail = terrain_noise(scaled_uv * 0.48 + vec2(6.2, 19.7));
+		vec3 trail_dark = vec3(0.46, 0.30, 0.08);
+		vec3 trail_yellow = vec3(0.88, 0.68, 0.22);
+		vec3 trail_color = mix(trail_dark, trail_yellow, 0.48 + trail_detail * 0.38);
+		if (show_trails) {
+			ground_color = mix(ground_color, trail_color, trail_mask * 0.94);
+		}
+		roughness = mix(0.88, 0.76, sand_mask);
 	}
 
 	float visible_grid = grid_visible ? grid_line : 0.0;
 	ALBEDO = mix(ground_color, vec3(0.04, 0.07, 0.04), visible_grid * 0.82);
-	ROUGHNESS = mix(0.88, 0.76, sand_mask);
+	ROUGHNESS = roughness;
 }
 """
 	var material := ShaderMaterial.new()

@@ -45,8 +45,14 @@ func _ready() -> void:
 	call_deferred("_start_battle")
 
 func _start_battle() -> void:
+	if game_session.selected_map_id == "builtin:arena":
+		for mob: Node in get_tree().get_nodes_in_group("world_mobs"):
+			mob.queue_free()
 	if game_session.has_match_configuration():
-		grid_manager.spawn_configured_teams(game_session.get_composition(1), game_session.get_composition(2), team_save_manager)
+		if game_session.selected_map_id == "builtin:arena":
+			grid_manager.spawn_arena_teams(game_session, team_save_manager)
+		else:
+			grid_manager.spawn_configured_teams(game_session.get_composition(1), game_session.get_composition(2), team_save_manager)
 	else:
 		grid_manager.spawn_default_units()
 	var units := grid_manager.get_units()
@@ -298,6 +304,8 @@ func _on_world_mob_clicked(mob: WorldMob) -> void:
 	grid_manager.show_danger_zone(mob.global_position, tactical_camera.vision_range)
 
 func _check_world_mob_encounter(unit: TacticalUnit) -> void:
+	if game_session.selected_map_id == "builtin:arena":
+		return
 	for node: Node in get_tree().get_nodes_in_group("world_mobs"):
 		var mob := node as WorldMob
 		if mob == null or not is_instance_valid(mob):
