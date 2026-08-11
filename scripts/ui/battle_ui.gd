@@ -163,6 +163,7 @@ func _rebuild_skill_bar() -> void:
 		button.custom_minimum_size = Vector2(150.0, 44.0)
 		button.toggle_mode = true
 		button.text = "%d  %s" % [index + 1, _active_unit.abilities[index]]
+		button.tooltip_text = AbilityCatalog.describe(_active_unit.abilities[index])
 		button.pressed.connect(_select_ability.bind(index))
 		skill_buttons.add_child(button)
 
@@ -267,11 +268,16 @@ func refresh_details() -> void:
 		_update_enemy_panel(null)
 		return
 	var team_name := "Gracz 1" if unit.team_id == 0 else "Gracz 2 / Przeciwnik"
-	var status := "Aktywna tura" if unit == _active_unit and not unit.has_finished_turn else "Tura zakonczona" if unit.has_finished_turn else "Oczekuje"
-	details_label.text = "%s\nDruzyna: %s\nHP: %d / %d\nInicjatywa: %d\nStatus: %s" % [
+	var turn_status := "Aktywna tura" if unit == _active_unit and not unit.has_finished_turn else "Tura zakonczona" if unit.has_finished_turn else "Oczekuje"
+	var effect_labels: Array[String] = []
+	for status_id: StringName in unit.statuses:
+		var turns := int(unit.statuses[status_id].get("duration", 0))
+		effect_labels.append("%s (%d)" % [TacticalUnit.status_label(status_id), turns])
+	var effects := ", ".join(effect_labels) if not effect_labels.is_empty() else "brak"
+	details_label.text = "%s\nDruzyna: %s\nHP: %d / %d\nInicjatywa: %d\nTura: %s\nEfekty: %s" % [
 		unit.display_name, team_name,
 		unit.current_health, unit.max_health,
-		unit.initiative, status
+		unit.initiative, turn_status, effects
 	]
 	_update_action_point_dots(unit)
 	_update_enemy_panel(unit)

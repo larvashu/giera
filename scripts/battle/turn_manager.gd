@@ -38,6 +38,7 @@ func end_current_turn() -> void:
 	_ending_turn = true
 	var ended_unit := active_unit
 	ended_unit.has_finished_turn = true
+	ended_unit.end_turn_statuses()
 	ended_unit.set_active(false)
 	turn_ended.emit(ended_unit)
 	active_unit = null
@@ -89,6 +90,8 @@ func _begin_turn(unit: TacticalUnit) -> void:
 	active_unit = unit
 	unit.has_finished_turn = false
 	unit.reset_action_points()
+	if unit.is_dead():
+		return
 	unit.set_active(true)
 	active_unit_changed.emit(unit)
 	initiative_queue_changed.emit(get_initiative_preview())

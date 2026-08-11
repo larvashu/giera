@@ -19,8 +19,9 @@ const DEFAULT_ABILITIES: Dictionary = {
 	&"troll": ["Maczuga", "Regeneracja", "Kamienna skora"],
 	&"golem": ["Kamienny cios", "Forteca", "Wstrzas"],
 	&"dragon": ["Smoczy oddech", "Lot", "Ogon"],
-	&"undead_priest": ["Dotyk zarazy", "Nekrotyczne leczenie", "Klątwa grobu"],
-	&"falconer": ["Sokoli zwiad", "Pikowanie", "Oznaczenie celu"]
+	&"undead_priest": ["Dotyk zarazy", "Nekrotyczne leczenie", "Klatwa grobu"],
+	&"falconer": ["Sokoli zwiad", "Pikowanie", "Oznaczenie celu"],
+	&"bandit": ["Brudny cios", "Rzut nozem", "Zasadzka"]
 }
 
 @export var faction: Faction = Faction.PLAYER
@@ -37,6 +38,7 @@ const DEFAULT_ABILITIES: Dictionary = {
 @export var initiative: int = 10
 var attributes: Dictionary[StringName, int] = {}
 var abilities: Array[String] = []
+var statuses: Dictionary[StringName, Dictionary] = {}
 var race_id: StringName
 var class_id: StringName
 var profile_uuid: String = ""
@@ -138,6 +140,7 @@ func is_dead() -> bool:
 
 func reset_action_points() -> void:
 	current_action_points = max_action_points
+	_process_turn_statuses()
 	action_points_changed.emit(current_action_points, max_action_points)
 	stats_changed.emit()
 	_update_overhead_ui()
@@ -173,6 +176,63 @@ func heal(amount: int) -> void:
 	health_changed.emit(current_health, max_health)
 	stats_changed.emit()
 	_update_overhead_ui()
+
+func apply_status(status_id: StringName, value: int, duration: int, source: TacticalUnit = null) -> void:
+	if status_id.is_empty() or duration <= 0 or is_dead():
+		return
+	var existing: Dictionary = statuses.get(status_id, {})
+	statuses[status_id] = {
+		"value": maxi(value, int(existing.get("value", 0))),
+		"duration": maxi(duration, int(existing.get("duration", 0))),
+		"source": source
+	}
+	stats_changed.emit()
+	_update_overhead_ui()
+
+func status_value(status_id: StringName) -> int:
+	return int((statuses.get(status_id, {}) as Dictionary).get("value", 0))
+
+func has_status(status_id: StringName) -> bool:
+	return statuses.has(status_id) and int(statuses[status_id].get("duration", 0)) > 0
+
+func can_move_this_turn() -> bool:
+	return not has_status(&"rooted") and not has_status(&"stunned")
+
+func _process_turn_statuses() -> void:
+	if has_status(&"regeneration"):
+		heal(status_value(&"regeneration"))
+	if has_status(&"poisoned"):
+		take_damage(status_value(&"poisoned"))
+	if has_status(&"burning"):
+		take_damage(status_value(&"burning"))
+	if has_status(&"slowed"):
+		current_action_points = maxi(0, current_action_points - status_value(&"slowed"))
+	if has_status(&"haste"):
+		current_action_points = mini(max_action_points + status_value(&"haste"), current_action_points + status_value(&"haste"))
+	if has_status(&"stunned"):
+		current_action_points = 0
+
+func end_turn_statuses() -> void:
+	var expired: Array[StringName] = []
+	for status_id: StringName in statuses:
+		var data: Dictionary = statuses[status_id]
+		data["duration"] = int(data.get("duration", 1)) - 1
+		if int(data.duration) <= 0:
+			expired.append(status_id)
+	for status_id: StringName in expired:
+		statuses.erase(status_id)
+	stats_changed.emit()
+	_update_overhead_ui()
+
+static func status_label(status_id: StringName) -> String:
+	const LABELS: Dictionary = {
+		&"guard": "ochrona", &"weakened": "oslabienie", &"marked": "oznaczenie",
+		&"rooted": "unieruchomienie", &"slowed": "spowolnienie", &"haste": "przyspieszenie",
+		&"might": "wzmocnienie", &"dodge": "unik", &"hidden": "ukrycie",
+		&"regeneration": "regeneracja", &"stunned": "ogluszenie", &"poisoned": "trucizna",
+		&"burning": "podpalenie"
+	}
+	return String(LABELS.get(status_id, String(status_id)))
 
 func set_selected(selected: bool) -> void:
 	if _selection_marker != null:

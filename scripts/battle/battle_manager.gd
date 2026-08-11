@@ -23,8 +23,13 @@ var _danger_zone_mob: WorldMob = null
 var _spawning_encounter: bool = false
 var _encounter_mode: bool = false
 var _encounter_participants: Array[TacticalUnit] = []
+var _ability_system: AbilitySystem
 
 func _ready() -> void:
+	_ability_system = AbilitySystem.new()
+	_ability_system.name = "AbilitySystem"
+	add_child(_ability_system)
+	_ability_system.setup(grid_manager)
 	player_controller.unit_selected.connect(_on_unit_selected)
 	player_controller.grid_cell_clicked.connect(_on_grid_cell_clicked)
 	player_controller.world_mob_clicked.connect(_on_world_mob_clicked)
@@ -82,7 +87,7 @@ func _on_unit_selected(unit: TacticalUnit) -> void:
 	else:
 		grid_manager.clear_danger_zone()
 	_refresh_movement_highlights()
-	if _selected_ability_index >= 0 and unit != turn_manager.active_unit:
+	if _selected_ability_index >= 0:
 		_execute_selected_ability(unit)
 	elif repeated_target:
 		_request_action_on_target(unit)
@@ -95,23 +100,40 @@ func _on_ability_selected(index: int, ability_name: String) -> void:
 	_selected_ability_index = index
 	_selected_ability_name = ability_name
 	_clear_pending_targets()
-	_refresh_movement_highlights()
 	if index >= 0:
-		battle_ui.set_phase_message("Wybrano: %s — kliknij cel, aby uzyc" % ability_name)
+		grid_manager.clear_highlights()
+		var ability := AbilityCatalog.get_ability(ability_name)
+		if String(ability.get("target", "enemy")) == "self":
+			_execute_selected_ability(turn_manager.active_unit)
+		else:
+			battle_ui.set_phase_message("%s - kliknij cel, aby uzyc" % AbilityCatalog.describe(ability_name))
 	else:
+		_refresh_movement_highlights()
 		battle_ui.set_phase_message("Nie wybrano umiejetnosci")
 
 func _execute_selected_ability(target: TacticalUnit) -> void:
 	if not _can_control_active_unit():
 		return
-	battle_ui.set_phase_message("%s → %s (efekt umiejetnosci oczekuje na implementacje)" % [_selected_ability_name, target.display_name])
+	var active := turn_manager.active_unit
+	var result := _ability_system.execute(active, target, _selected_ability_name)
+	battle_ui.set_phase_message(String(result.get("message", "Nie udalo sie uzyc umiejetnosci")))
 	_pending_unit_target = null
+	if bool(result.get("ok", false)):
+		_selected_ability_index = -1
+		_selected_ability_name = ""
+		battle_ui.set_active_unit(active, true)
+		battle_ui.refresh_details()
+		_refresh_movement_highlights()
 
 func _request_action_on_target(target: TacticalUnit) -> void:
 	var active := turn_manager.active_unit
 	if not _can_control_active_unit() or target == active:
 		return
-	battle_ui.set_phase_message("Akcja na %s — system zdolnosci jest przygotowany, brak aktywnych atakow" % target.display_name)
+	var basic_name := active.abilities[0] if not active.abilities.is_empty() else ""
+	var result := _ability_system.execute(active, target, basic_name)
+	battle_ui.set_phase_message(String(result.get("message", "Brak dostepnej akcji")))
+	battle_ui.refresh_details()
+	_refresh_movement_highlights()
 	_pending_unit_target = null
 
 func _on_grid_cell_clicked(cell: Vector2i) -> void:
@@ -131,6 +153,9 @@ func _on_grid_cell_clicked(cell: Vector2i) -> void:
 func _execute_move(cell: Vector2i) -> void:
 	var active := turn_manager.active_unit
 	if active == null:
+		return
+	if not active.can_move_this_turn():
+		battle_ui.set_phase_message("%s nie moze sie teraz poruszyc" % active.display_name)
 		return
 	var path := grid_manager.find_path(active.grid_position, cell, active.current_action_points)
 	var cost: int = path.size()
@@ -168,7 +193,7 @@ func _can_control_active_unit() -> bool:
 
 func _refresh_movement_highlights() -> void:
 	grid_manager.clear_highlights()
-	if _can_control_active_unit():
+	if _can_control_active_unit() and turn_manager.active_unit.can_move_this_turn():
 		grid_manager.show_reachable_cells(turn_manager.active_unit)
 		if _pending_move_cell.x > -900:
 			grid_manager.set_preview_cell(_pending_move_cell)
@@ -384,14 +409,14 @@ func _execute_enemy_turn(unit: TacticalUnit) -> void:
 		turn_manager.end_current_turn()
 		return
 
-	if unit.current_action_points > 0 and not _is_adjacent(unit.grid_position, target.grid_position):
+	if unit.current_action_points > 0 and unit.can_move_this_turn() and not _can_ai_use_ability(unit, target):
 		await _ai_move_towards(unit, target)
 		if is_instance_valid(unit):
 			grid_manager.show_enemy_range(unit)
 			tactical_camera.focus_on_unit(unit)
 
-	if is_instance_valid(unit) and not unit.is_dead() and is_instance_valid(target) and not target.is_dead():
-		if _is_adjacent(unit.grid_position, target.grid_position):
+	if unit.current_action_points > 0 and is_instance_valid(unit) and not unit.is_dead() and is_instance_valid(target) and not target.is_dead():
+		if not _ai_use_best_ability(unit, target) and _is_adjacent(unit.grid_position, target.grid_position):
 			_ai_attack(unit, target)
 			await get_tree().create_timer(0.5).timeout
 
@@ -455,3 +480,20 @@ func _ai_attack(attacker: TacticalUnit, target: TacticalUnit) -> void:
 	battle_ui.set_phase_message("%s atakuje %s! Obrazenia: %d" % [attacker.display_name, target.display_name, damage])
 	target.take_damage(damage)
 	battle_ui.refresh_details()
+
+func _can_ai_use_ability(actor: TacticalUnit, target: TacticalUnit) -> bool:
+	for ability_name: String in actor.abilities:
+		if bool(_ability_system.can_execute(actor, target, ability_name).get("ok", false)):
+			return true
+	return false
+
+func _ai_use_best_ability(actor: TacticalUnit, target: TacticalUnit) -> bool:
+	for ability_name: String in actor.abilities:
+		var validation := _ability_system.can_execute(actor, target, ability_name)
+		if not bool(validation.get("ok", false)):
+			continue
+		var result := _ability_system.execute(actor, target, ability_name)
+		battle_ui.set_phase_message(String(result.get("message", "")))
+		battle_ui.refresh_details()
+		return bool(result.get("ok", false))
+	return false
