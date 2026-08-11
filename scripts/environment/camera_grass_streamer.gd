@@ -29,6 +29,9 @@ var _far_field: MultiMeshInstance3D
 
 
 func _ready() -> void:
+	if GameSession.selected_map_id == "builtin:arena":
+		set_process(false)
+		return
 	_grid_manager = get_node_or_null(grid_manager_path) as GridManager
 	if _grid_manager == null:
 		push_error("CameraGrassStreamer: nie znaleziono GridManager.")

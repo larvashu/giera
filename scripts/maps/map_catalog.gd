@@ -5,7 +5,7 @@ const DEFAULT_ID := "builtin:forest"
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(MAP_DIRECTORY))
 func list_maps() -> Array[Dictionary]:
-	var result: Array[Dictionary] = [{"id": DEFAULT_ID, "name": "Dzika Polana (oryginalna)"}]
+	var result: Array[Dictionary] = [{"id": DEFAULT_ID, "name": "Dzika Polana (oryginalna)"}, {"id": "builtin:arena", "name": "Arena (mala plansza)"}]
 	var directory := DirAccess.open(MAP_DIRECTORY)
 	if directory == null: return result
 	directory.list_dir_begin()

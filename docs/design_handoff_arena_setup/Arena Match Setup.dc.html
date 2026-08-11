@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body { margin: 0; background: oklch(0.12 0.01 40); }
+    a { color: oklch(0.62 0.15 80); }
+    a:hover { color: oklch(0.7 0.15 80); }
+  </style>
+</helmet>
+
+<div style="width:100%;height:100vh;position:relative;overflow:auto;background:radial-gradient(ellipse at 50% -10%, oklch(0.2 0.02 40) 0%, oklch(0.12 0.012 40) 55%);font-family:'Work Sans',sans-serif;color:oklch(0.92 0.01 60);">
+
+  <!-- SETUP SCREEN -->
+  <sc-if value="{{ isSetup }}" hint-placeholder-val="{{ true }}">
+    <div style="position:relative;min-height:100%;box-sizing:border-box;padding:40px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:48px;">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:14px;">
+        <div style="font-family:'Cinzel',serif;font-size:20px;letter-spacing:6px;color:oklch(0.6 0.15 25);">FREE-FOR-ALL ARENA</div>
+        <div style="font-family:'Cinzel',serif;font-weight:700;font-size:46px;letter-spacing:3px;">SET UP THE MATCH</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+        <div style="font-family:'Cinzel',serif;font-size:14px;letter-spacing:3px;color:oklch(0.65 0.02 50);">NUMBER OF PLAYERS</div>
+        <div style="display:flex;gap:20px;">
+          <sc-for list="{{ playerOptions }}" as="opt" hint-placeholder-count="4">
+            <div onClick="{{ opt.select }}" style="width:150px;padding:22px 16px;border:1px solid {{ opt.border }};background:oklch(0.18 0.015 40);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;" style-hover="border-color:oklch(0.62 0.15 80);">
+              <div style="font-family:'Cinzel',serif;font-weight:700;font-size:38px;line-height:1;color:{{ opt.numColor }};">{{ opt.n }}</div>
+              <div style="font-size:11px;letter-spacing:1px;color:oklch(0.6 0.02 50);">PLAYER{{ opt.plural }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+        <div style="font-family:'Cinzel',serif;font-size:14px;letter-spacing:3px;color:oklch(0.65 0.02 50);">CHAMPIONS PER PLAYER</div>
+        <div style="display:flex;gap:20px;">
+          <sc-for list="{{ champOptions }}" as="opt" hint-placeholder-count="4">
+            <div onClick="{{ opt.select }}" style="width:150px;padding:22px 16px;border:1px solid {{ opt.border }};background:oklch(0.18 0.015 40);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;" style-hover="border-color:oklch(0.62 0.15 80);">
+              <div style="font-family:'Cinzel',serif;font-weight:700;font-size:38px;line-height:1;color:{{ opt.numColor }};">{{ opt.n }}</div>
+              <div style="font-size:11px;letter-spacing:1px;color:oklch(0.6 0.02 50);">CHAMPION{{ opt.plural }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+
+      <div onClick="{{ goToDraft }}" style="margin-top:8px;padding:18px 64px;background:oklch(0.62 0.15 80);color:oklch(0.14 0.01 60);font-family:'Cinzel',serif;font-weight:700;font-size:18px;letter-spacing:3px;cursor:pointer;" style-hover="background:oklch(0.68 0.15 80);">
+        CONTINUE
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- DRAFT SCREEN -->
+  <sc-if value="{{ isDraft }}" hint-placeholder-val="{{ false }}">
+    <div style="position:relative;min-height:100%;box-sizing:border-box;display:flex;flex-direction:column;">
+
+      <div style="height:96px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 40px;border-bottom:1px solid oklch(0.28 0.02 40);">
+        <div onClick="{{ backToSetup }}" style="font-family:'Cinzel',serif;font-size:14px;letter-spacing:2px;color:oklch(0.65 0.02 50);cursor:pointer;" style-hover="color:oklch(0.9 0.01 60);">&larr; BACK</div>
+        <div style="font-family:'Cinzel',serif;font-weight:700;font-size:28px;letter-spacing:3px;">DRAFT YOUR WARBAND</div>
+        <div style="font-family:'Cinzel',serif;font-size:14px;letter-spacing:2px;color:oklch(0.65 0.02 50);width:180px;text-align:right;">{{ playerCount }} PLAYERS · {{ champCount }} EACH</div>
+      </div>
+
+      <div style="flex:1;display:flex;padding:24px 32px 0 32px;overflow:hidden;">
+        <sc-for list="{{ players }}" as="p" hint-placeholder-count="2">
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;padding:0 20px;border-right:{{ p.divider }};overflow:hidden;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;gap:8px;">
+              <div style="font-family:'Cinzel',serif;font-weight:600;font-size:15px;letter-spacing:1.5px;color:{{ p.hue }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ p.label }}</div>
+              <div onClick="{{ p.toggleReady }}" style="padding:8px 14px;font-family:'Cinzel',serif;font-size:10.5px;letter-spacing:1.5px;cursor:{{ p.readyCursor }};border:1px solid {{ p.readyBorder }};color:{{ p.readyText }};background:{{ p.readyBg }};opacity:{{ p.readyOpacity }};white-space:nowrap;">{{ p.readyLabel }}</div>
+            </div>
+            <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+              <sc-for list="{{ p.slots }}" as="slot" hint-placeholder-count="2">
+                <div onClick="{{ slot.onClick }}" style="width:60px;height:60px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;background:{{ slot.bg }};border:1px dashed {{ slot.border }};font-family:'Cinzel',serif;">
+                  <div style="font-size:{{ slot.codeSize }};font-weight:700;color:oklch(0.9 0.01 60);">{{ slot.code }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="flex:1;display:flex;flex-direction:column;gap:8px;overflow:auto;">
+              <sc-for list="{{ p.classes }}" as="c" hint-placeholder-count="8">
+                <div onClick="{{ c.onClick }}" style="display:flex;gap:8px;padding:8px;background:{{ c.bg }};border:1px solid {{ c.border }};cursor:{{ c.cursor }};opacity:{{ c.opacity }};align-items:center;">
+                  <div style="width:36px;height:36px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:oklch(0.24 0.02 40);border:1px solid oklch(0.35 0.03 40);font-family:'Cinzel',serif;font-weight:700;font-size:10px;color:{{ p.hue }};">{{ c.code }}</div>
+                  <div style="min-width:0;">
+                    <div style="font-family:'Cinzel',serif;font-size:11.5px;letter-spacing:0.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ c.name }}</div>
+                    <div style="font-size:9px;color:oklch(0.58 0.02 50);line-height:1.25;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">{{ c.role }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="flex-shrink:0;display:flex;justify-content:center;padding:20px 0 28px 0;">
+        <div onClick="{{ beginBattle }}" style="width:440px;height:64px;display:flex;align-items:center;justify-content:center;background:{{ beginBg }};color:{{ beginColor }};font-family:'Cinzel',serif;font-weight:700;font-size:18px;letter-spacing:4px;cursor:{{ beginCursor }};pointer-events:{{ beginPointerEvents }};opacity:{{ beginOpacity }};">
+          BEGIN BATTLE
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- CONFIRM SCREEN -->
+  <sc-if value="{{ isConfirm }}" hint-placeholder-val="{{ false }}">
+    <div style="position:relative;min-height:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;padding:64px 60px 46px 60px;">
+      <div style="font-family:'Cinzel',serif;font-size:16px;letter-spacing:6px;color:oklch(0.6 0.02 50);margin-bottom:10px;">THE GATES OPEN</div>
+      <div style="font-family:'Cinzel',serif;font-weight:700;font-size:40px;letter-spacing:3px;margin-bottom:48px;">CHAMPIONS ASSEMBLED</div>
+
+      <div style="flex:1;width:100%;max-width:1700px;display:flex;gap:0;">
+        <sc-for list="{{ rosterPanels }}" as="rp" hint-placeholder-count="2">
+          <div style="flex:1;min-width:0;padding:0 22px;border-right:{{ rp.divider }};">
+            <div style="font-family:'Cinzel',serif;font-size:15px;letter-spacing:1.5px;color:{{ rp.hue }};margin-bottom:14px;">{{ rp.label }}</div>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+              <sc-for list="{{ rp.roster }}" as="r" hint-placeholder-count="2">
+                <div style="display:flex;align-items:center;gap:12px;padding:12px;background:oklch(0.18 0.015 40);border:1px solid oklch(0.3 0.03 40);">
+                  <div style="width:40px;height:40px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:oklch(0.24 0.02 40);border:1px solid {{ rp.hue }};font-family:'Cinzel',serif;font-weight:700;font-size:11px;color:{{ rp.hue }};">{{ r.code }}</div>
+                  <div style="min-width:0;">
+                    <div style="font-family:'Cinzel',serif;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ r.name }}</div>
+                    <div style="font-size:9px;color:{{ rp.hue }};text-transform:uppercase;margin-top:3px;">{{ r.role }}</div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="display:flex;flex-direction:column;align-items:center;gap:18px;margin-top:24px;">
+        <div style="width:360px;height:64px;display:flex;align-items:center;justify-content:center;background:oklch(0.62 0.15 80);color:oklch(0.14 0.01 60);font-family:'Cinzel',serif;font-weight:700;font-size:18px;letter-spacing:3px;cursor:pointer;" style-hover="background:oklch(0.68 0.15 80);">ENTER ARENA</div>
+        <div onClick="{{ backToDraft }}" style="font-size:13px;color:oklch(0.6 0.02 50);cursor:pointer;text-decoration:underline;" style-hover="color:oklch(0.85 0.01 60);">Back to draft</div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const CLASSES = [
+  { id: 'warbringer', code: 'WB', name: 'Warbringer', role: 'Vanguard · Heavy Melee', blurb: 'Charges the front line and taunts foes into reach.' },
+  { id: 'shadowblade', code: 'SH', name: 'Shadowblade', role: 'Assassin · Melee', blurb: 'Strikes from stealth for brutal opening damage.' },
+  { id: 'pyromancer', code: 'PY', name: 'Pyromancer', role: 'Battlemage · Fire', blurb: 'Burns the battlefield with area ignition spells.' },
+  { id: 'cryomancer', code: 'CR', name: 'Cryomancer', role: 'Battlemage · Frost', blurb: 'Freezes and slows enemies to control the field.' },
+  { id: 'deathspeaker', code: 'DS', name: 'Deathspeaker', role: 'Necromancer · Support', blurb: 'Drains life and raises the fallen to fight again.' },
+  { id: 'windrunner', code: 'WR', name: 'Windrunner', role: 'Ranger · Ranged', blurb: 'Outmaneuvers foes with mobility and precise shots.' },
+  { id: 'stoneward', code: 'ST', name: 'Stoneward', role: 'Guardian · Earth', blurb: 'Shields allies and hardens the ground beneath them.' },
+  { id: 'plaguebringer', code: 'PL', name: 'Plaguebringer', role: 'Blightcaller · Poison', blurb: 'Spreads lingering toxins that punish grouped enemies.' },
+];
+
+const PLAYER_LABELS = ['PLAYER ONE', 'PLAYER TWO', 'PLAYER THREE', 'PLAYER FOUR'];
+const PLAYER_HUES = [25, 80, 200, 305];
+
+class Component extends DCLogic {
+  state = {
+    step: 'setup',
+    playerCount: 2,
+    champCount: 2,
+    teams: [[null, null], [null, null]],
+    readies: [false, false],
+  };
+
+  selectPlayerCount = (n) => this.setState({ playerCount: n });
+  selectChampCount = (n) => this.setState({ champCount: n });
+
+  goToDraft = () => {
+    const { playerCount, champCount } = this.state;
+    this.setState({
+      step: 'draft',
+      teams: new Array(playerCount).fill(null).map(() => new Array(champCount).fill(null)),
+      readies: new Array(playerCount).fill(false),
+    });
+  };
+
+  backToSetup = () => this.setState({ step: 'setup' });
+  backToDraft = () => this.setState({ step: 'draft' });
+
+  pickClass = (playerIdx, classId) => {
+    if (this.state.readies[playerIdx]) return;
+    const teams = this.state.teams.map((t) => t.slice());
+    const arr = teams[playerIdx];
+    const existingIdx = arr.indexOf(classId);
+    if (existingIdx !== -1) {
+      arr[existingIdx] = null;
+    } else {
+      const emptyIdx = arr.indexOf(null);
+      if (emptyIdx === -1) return;
+      arr[emptyIdx] = classId;
+    }
+    this.setState({ teams });
+  };
+
+  clearSlot = (playerIdx, slotIdx) => {
+    if (this.state.readies[playerIdx]) return;
+    const teams = this.state.teams.map((t) => t.slice());
+    teams[playerIdx][slotIdx] = null;
+    this.setState({ teams });
+  };
+
+  toggleReady = (playerIdx) => {
+    if (this.state.teams[playerIdx].includes(null)) return;
+    const readies = this.state.readies.slice();
+    readies[playerIdx] = !readies[playerIdx];
+    this.setState({ readies });
+  };
+
+  beginBattle = () => {
+    if (this.state.readies.every(Boolean)) this.setState({ step: 'confirm' });
+  };
+
+  renderVals() {
+    const s = this.state;
+    const numOptions = (selectedVal, onSelect) => [1, 2, 3, 4].map((n) => ({
+      n,
+      plural: n === 1 ? '' : 'S',
+      select: () => onSelect(n),
+      border: selectedVal === n ? 'oklch(0.62 0.15 80)' : 'oklch(0.32 0.03 40)',
+      numColor: selectedVal === n ? 'oklch(0.92 0.01 60)' : 'oklch(0.6 0.02 50)',
+    }));
+
+    const players = s.teams.map((arr, idx) => {
+      const hue = `oklch(0.6 0.15 ${PLAYER_HUES[idx]})`;
+      const full = !arr.includes(null);
+      const ready = s.readies[idx];
+      const slots = arr.map((cid, slotIdx) => {
+        const cls = cid ? CLASSES.find((c) => c.id === cid) : null;
+        return {
+          code: cls ? cls.code : '+',
+          codeSize: cls ? '15px' : '18px',
+          bg: cls ? 'oklch(0.24 0.02 40)' : 'transparent',
+          border: cls ? hue : 'oklch(0.35 0.02 40)',
+          onClick: () => this.clearSlot(idx, slotIdx),
+        };
+      });
+      const classes = CLASSES.map((c) => {
+        const picked = arr.includes(c.id);
+        const disabled = ready || (!picked && full);
+        return {
+          ...c,
+          bg: picked ? 'oklch(0.24 0.05 ' + PLAYER_HUES[idx] + ')' : 'oklch(0.17 0.012 40)',
+          border: picked ? hue : 'oklch(0.3 0.02 40)',
+          cursor: disabled ? 'default' : 'pointer',
+          opacity: disabled && !picked ? 0.4 : 1,
+          onClick: () => this.pickClass(idx, c.id),
+        };
+      });
+      return {
+        label: PLAYER_LABELS[idx],
+        hue,
+        divider: idx < s.teams.length - 1 ? '1px solid oklch(0.28 0.02 40)' : 'none',
+        slots,
+        classes,
+        toggleReady: () => this.toggleReady(idx),
+        readyLabel: ready ? 'WAITING…' : full ? 'READY' : 'PICK ALL',
+        readyBorder: ready ? hue : full ? 'oklch(0.4 0.03 40)' : 'oklch(0.3 0.02 40)',
+        readyText: ready ? hue : 'oklch(0.6 0.02 50)',
+        readyBg: ready ? 'oklch(0.24 0.05 ' + PLAYER_HUES[idx] + ')' : 'transparent',
+        readyOpacity: full ? 1 : 0.4,
+        readyCursor: full ? 'pointer' : 'default',
+      };
+    });
+
+    const rosterPanels = s.teams.map((arr, idx) => ({
+      label: PLAYER_LABELS[idx],
+      hue: `oklch(0.6 0.15 ${PLAYER_HUES[idx]})`,
+      divider: idx < s.teams.length - 1 ? '1px solid oklch(0.28 0.02 40)' : 'none',
+      roster: arr.filter(Boolean).map((id) => CLASSES.find((c) => c.id === id)),
+    }));
+
+    const beginReady = s.readies.length > 0 && s.readies.every(Boolean);
+
+    return {
+      isSetup: s.step === 'setup',
+      isDraft: s.step === 'draft',
+      isConfirm: s.step === 'confirm',
+      playerCount: s.playerCount,
+      champCount: s.champCount,
+      playerOptions: numOptions(s.playerCount, this.selectPlayerCount),
+      champOptions: numOptions(s.champCount, this.selectChampCount),
+      goToDraft: this.goToDraft,
+      backToSetup: this.backToSetup,
+      backToDraft: this.backToDraft,
+      beginBattle: this.beginBattle,
+      players,
+      rosterPanels,
+      beginBg: beginReady ? 'oklch(0.62 0.15 80)' : 'oklch(0.22 0.02 40)',
+      beginColor: beginReady ? 'oklch(0.14 0.01 60)' : 'oklch(0.5 0.02 50)',
+      beginCursor: beginReady ? 'pointer' : 'default',
+      beginPointerEvents: beginReady ? 'auto' : 'none',
+      beginOpacity: beginReady ? 1 : 0.5,
+    };
+  }
+}
+</script>
+</body>
+</html>

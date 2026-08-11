@@ -34,6 +34,10 @@ var _rock_material: StandardMaterial3D
 
 func _ready() -> void:
 	_create_materials()
+	var session := get_node_or_null("/root/GameSession") as GameSessionState
+	if session != null and session.selected_map_id == "builtin:arena":
+		_create_arena_decoration()
+		return
 	_create_forest()
 	_create_landmark_trees()
 	_create_grass_scatter()
@@ -47,6 +51,241 @@ func _create_materials() -> void:
 	_grass_material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_grass_dark_material = _material(Color(0.06, 0.22, 0.07, 1.0), 1.0)
 	_rock_material = _material(Color(0.27, 0.29, 0.27, 1.0), 1.0)
+
+func _create_arena_decoration() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 44_772_019
+
+	var _rect := grid_manager.get_arena_rect()
+	var ax := float(_rect.position.x)
+	var ay := float(_rect.position.y)
+	var aw := float(_rect.size.x)
+	var ah := float(_rect.size.y)
+
+	# ── Materials ─────────────────────────────────────────────────────────
+	var stone_mat  := _material(Color(0.40, 0.36, 0.30), 0.88)
+	var stone_dark := _material(Color(0.26, 0.23, 0.19), 0.95)
+	var torch_pole := _material(Color(0.22, 0.15, 0.08), 0.85)
+	var flame_mat  := StandardMaterial3D.new()
+	flame_mat.albedo_color = Color(1.0, 0.55, 0.05)
+	flame_mat.emission_enabled = true
+	flame_mat.emission = Color(1.0, 0.45, 0.0)
+	flame_mat.emission_energy_multiplier = 3.0
+	flame_mat.roughness = 0.2
+
+	var arena_root := Node3D.new()
+	arena_root.name = "ArenaDecoration"
+	add_child(arena_root)
+
+	var collision_body := StaticBody3D.new()
+	collision_body.name = "ArenaCollisions"
+	collision_body.collision_layer = 1
+	collision_body.collision_mask = 0
+	add_child(collision_body)
+
+	# ── Block all border cells ────────────────────────────────────────────
+	var _ix := int(ax); var _iy := int(ay); var _iw := int(aw); var _ih := int(ah)
+	for x: int in range(_ix, _ix + _iw):
+		grid_manager.block_cell(Vector2i(x, _iy))
+		grid_manager.block_cell(Vector2i(x, _iy + _ih - 1))
+	for y: int in range(_iy + 1, _iy + _ih - 1):
+		grid_manager.block_cell(Vector2i(_ix, y))
+		grid_manager.block_cell(Vector2i(_ix + _iw - 1, y))
+
+	# ── Constants ─────────────────────────────────────────────────────────
+	const WALL_H      := 3.0   # wall height
+	const WALL_T      := 1.4   # wall thickness
+	const SEG_LEN     := 4.0   # length of one wall segment
+	const TOWER_SZ    := 2.2   # tower footprint (square)
+	const TOWER_H     := 5.0   # tower height
+	const MERLON_SZ   := 0.7   # battlement block size
+
+	# ── Corner towers ─────────────────────────────────────────────────────
+	var corners: Array[Vector2] = [
+		Vector2(ax,        ay),
+		Vector2(ax + aw,   ay),
+		Vector2(ax,        ay + ah),
+		Vector2(ax + aw,   ay + ah),
+	]
+	for corner: Vector2 in corners:
+		var h := grid_manager.terrain_height(corner.x, corner.y)
+		# Main tower shaft
+		_add_wall_box(arena_root, collision_body, stone_dark,
+			Vector3(corner.x, h + TOWER_H * 0.5, corner.y),
+			Vector3(TOWER_SZ, TOWER_H, TOWER_SZ))
+		# Battlements — alternating merlons on top
+		for mi: int in range(3):
+			var ox := (float(mi) - 1.0) * (TOWER_SZ / 2.2)
+			_add_wall_box(arena_root, null, stone_mat,
+				Vector3(corner.x + ox, h + TOWER_H + MERLON_SZ * 0.5, corner.y),
+				Vector3(MERLON_SZ, MERLON_SZ, TOWER_SZ + 0.2))
+			_add_wall_box(arena_root, null, stone_mat,
+				Vector3(corner.x, h + TOWER_H + MERLON_SZ * 0.5, corner.y + ox),
+				Vector3(TOWER_SZ + 0.2, MERLON_SZ, MERLON_SZ))
+
+	# ── Wall segments (skip tower footprint at each end) ──────────────────
+	var half_tower := TOWER_SZ * 0.5 + 0.1
+	# North & South walls (along X)
+	for sign_z: int in [0, 1]:
+		var wz := ay if sign_z == 0 else ay + ah
+		var wx_start := ax + half_tower
+		var wx_end   := ax + aw - half_tower
+		var span := wx_end - wx_start
+		var segs := maxi(1, roundi(span / SEG_LEN))
+		var seg_w := span / float(segs)
+		for si: int in range(segs):
+			var cx := wx_start + (float(si) + 0.5) * seg_w
+			var h := grid_manager.terrain_height(cx, wz)
+			_add_wall_box(arena_root, collision_body, stone_mat,
+				Vector3(cx, h + WALL_H * 0.5 - 0.3, wz),
+				Vector3(seg_w - 0.12, WALL_H, WALL_T))
+			# Merlons on top
+			for mi: int in range(roundi(seg_w / 1.4)):
+				var mx := cx - seg_w * 0.5 + (float(mi) + 0.5) * (seg_w / roundi(seg_w / 1.4))
+				if mi % 2 == 0:
+					_add_wall_box(arena_root, null, stone_mat,
+						Vector3(mx, h + WALL_H + MERLON_SZ * 0.5 - 0.3, wz),
+						Vector3(0.55, MERLON_SZ, WALL_T + 0.1))
+
+	# East & West walls (along Z)
+	for sign_x: int in [0, 1]:
+		var wx := ax if sign_x == 0 else ax + aw
+		var wz_start := ay + half_tower
+		var wz_end   := ay + ah - half_tower
+		var span := wz_end - wz_start
+		var segs := maxi(1, roundi(span / SEG_LEN))
+		var seg_w := span / float(segs)
+		for si: int in range(segs):
+			var cz := wz_start + (float(si) + 0.5) * seg_w
+			var h := grid_manager.terrain_height(wx, cz)
+			_add_wall_box(arena_root, collision_body, stone_mat,
+				Vector3(wx, h + WALL_H * 0.5 - 0.3, cz),
+				Vector3(WALL_T, WALL_H, seg_w - 0.12))
+			for mi: int in range(roundi(seg_w / 1.4)):
+				var mz := cz - seg_w * 0.5 + (float(mi) + 0.5) * (seg_w / roundi(seg_w / 1.4))
+				if mi % 2 == 0:
+					_add_wall_box(arena_root, null, stone_mat,
+						Vector3(wx, h + WALL_H + MERLON_SZ * 0.5 - 0.3, mz),
+						Vector3(WALL_T + 0.1, MERLON_SZ, 0.55))
+
+	# ── Torches: corners + wall midpoints ────────────────────────────────
+	var torch_positions: Array[Vector2] = [
+		Vector2(ax,              ay),
+		Vector2(ax + aw,         ay),
+		Vector2(ax,              ay + ah),
+		Vector2(ax + aw,         ay + ah),
+		Vector2(ax + aw * 0.5,  ay),
+		Vector2(ax + aw * 0.5,  ay + ah),
+		Vector2(ax,              ay + ah * 0.5),
+		Vector2(ax + aw,         ay + ah * 0.5),
+		Vector2(ax + aw * 0.25, ay),
+		Vector2(ax + aw * 0.75, ay),
+		Vector2(ax + aw * 0.25, ay + ah),
+		Vector2(ax + aw * 0.75, ay + ah),
+	]
+	for tp: Vector2 in torch_positions:
+		var h := grid_manager.terrain_height(tp.x, tp.y)
+		_add_arena_torch(arena_root, torch_pole, flame_mat, Vector3(tp.x, h, tp.y))
+
+	# ── Interior obstacle trees ───────────────────────────────────────────
+	const OBSTACLE_TREE_RATIOS: Array[Vector2] = [
+		Vector2(0.20, 0.32), Vector2(0.80, 0.28),
+		Vector2(0.50, 0.22), Vector2(0.47, 0.68),
+		Vector2(0.32, 0.50), Vector2(0.68, 0.55),
+		Vector2(0.12, 0.60), Vector2(0.88, 0.45),
+	]
+	var tree_transforms: Array[Array] = [[], [], []]
+	for ratio: Vector2 in OBSTACLE_TREE_RATIOS:
+		var base_pos := Vector2(ax + ratio.x * aw, ay + ratio.y * ah)
+		var jitter := Vector2(rng.randf_range(-0.7, 0.7), rng.randf_range(-0.7, 0.7))
+		var p := base_pos + jitter
+		var cell := Vector2i(roundi(p.x), roundi(p.y))
+		grid_manager.block_cell(cell)
+		var variant_index: int = rng.randi_range(0, PURPLE_TREE_SCENES.size() - 1)
+		var scale_value: float = rng.randf_range(1.8, 2.5) * rng.randf_range(1.8, 2.4)
+		var world_pos := Vector3(p.x, grid_manager.terrain_height(p.x, p.y), p.y)
+		var tilt := Vector3(deg_to_rad(rng.randf_range(-3.0, 3.0)), rng.randf_range(0.0, TAU), deg_to_rad(rng.randf_range(-3.0, 3.0)))
+		tree_transforms[variant_index].append(Transform3D(Basis.from_euler(tilt).scaled(Vector3.ONE * scale_value), world_pos + Vector3.UP * scale_value))
+		var col := CollisionShape3D.new()
+		var shape := CylinderShape3D.new()
+		shape.radius = minf(0.16 * scale_value, 1.2)
+		shape.height = 1.5 * scale_value
+		col.shape = shape
+		col.position = world_pos + Vector3.UP * (0.75 * scale_value)
+		collision_body.add_child(col)
+	for v: int in range(PURPLE_TREE_SCENES.size()):
+		_create_tree_multimesh(v, tree_transforms[v])
+
+
+func _add_wall_box(
+	parent: Node3D,
+	collision_parent: StaticBody3D,
+	mat: StandardMaterial3D,
+	position: Vector3,
+	size: Vector3
+) -> void:
+	var mi := MeshInstance3D.new()
+	var box := BoxMesh.new()
+	box.size = size
+	mi.mesh = box
+	mi.material_override = mat
+	mi.position = position
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	parent.add_child(mi)
+	if collision_parent != null:
+		var col := CollisionShape3D.new()
+		var shape := BoxShape3D.new()
+		shape.size = size
+		col.shape = shape
+		col.position = position
+		collision_parent.add_child(col)
+
+
+func _add_arena_torch(
+	parent: Node3D,
+	pole_mat: StandardMaterial3D,
+	flame_mat: StandardMaterial3D,
+	base_pos: Vector3
+) -> void:
+	var root := Node3D.new()
+	root.position = base_pos
+
+	# Pole
+	var pole := MeshInstance3D.new()
+	var pole_mesh := CylinderMesh.new()
+	pole_mesh.top_radius = 0.06
+	pole_mesh.bottom_radius = 0.09
+	pole_mesh.height = 2.4
+	pole_mesh.radial_segments = 8
+	pole.mesh = pole_mesh
+	pole.material_override = pole_mat
+	pole.position = Vector3.UP * 1.2 + Vector3(0.0, 0.0, 0.0)
+	pole.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(pole)
+
+	# Flame bowl
+	var bowl := MeshInstance3D.new()
+	var bowl_mesh := CylinderMesh.new()
+	bowl_mesh.top_radius = 0.24
+	bowl_mesh.bottom_radius = 0.13
+	bowl_mesh.height = 0.30
+	bowl_mesh.radial_segments = 10
+	bowl.mesh = bowl_mesh
+	bowl.material_override = flame_mat
+	bowl.position = Vector3.UP * 2.55
+	bowl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.add_child(bowl)
+
+	# Point light
+	var light := OmniLight3D.new()
+	light.light_color = Color(1.0, 0.60, 0.18)
+	light.light_energy = 2.8
+	light.omni_range = 7.0
+	light.omni_attenuation = 1.8
+	light.position = Vector3.UP * 2.7
+	root.add_child(light)
+
+	parent.add_child(root)
 
 func _create_tree(cell: Vector2i) -> void:
 	var tree := StaticBody3D.new()

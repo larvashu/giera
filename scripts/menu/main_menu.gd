@@ -3,6 +3,7 @@ extends Control
 
 func _ready() -> void:
 	%PlayButton.pressed.connect(_play)
+	%ArenaButton.pressed.connect(_arena)
 	%TeamsButton.pressed.connect(_teams)
 	%CharactersButton.pressed.connect(_characters)
 	%MapEditorButton.pressed.connect(_map_editor)
@@ -12,6 +13,9 @@ func _ready() -> void:
 
 func _play() -> void:
 	get_tree().change_scene_to_file("res://scenes/menu/hotseat_setup.tscn")
+
+func _arena() -> void:
+	get_tree().change_scene_to_file("res://scenes/menu/arena_setup.tscn")
 
 func _teams() -> void:
 	get_tree().change_scene_to_file("res://scenes/menu/team_builder.tscn")

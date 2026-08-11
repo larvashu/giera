@@ -45,8 +45,14 @@ func _ready() -> void:
 	call_deferred("_start_battle")
 
 func _start_battle() -> void:
+	if game_session.selected_map_id == "builtin:arena":
+		for mob: Node in get_tree().get_nodes_in_group("world_mobs"):
+			mob.queue_free()
 	if game_session.has_match_configuration():
-		grid_manager.spawn_configured_teams(game_session.get_composition(1), game_session.get_composition(2), team_save_manager)
+		if game_session.selected_map_id == "builtin:arena":
+			grid_manager.spawn_arena_teams(game_session, team_save_manager)
+		else:
+			grid_manager.spawn_configured_teams(game_session.get_composition(1), game_session.get_composition(2), team_save_manager)
 	else:
 		grid_manager.spawn_default_units()
 	var units := grid_manager.get_units()
@@ -182,7 +188,8 @@ func _on_turn_started(unit: TacticalUnit) -> void:
 		turn_manager.end_current_turn()
 		return
 	var is_enemy := unit.faction == TacticalUnit.Faction.ENEMY
-	_input_enabled = not is_enemy and game_session.is_team_locally_controllable(unit.team_id)
+	var is_locally_controlled := game_session.is_team_locally_controllable(unit.team_id)
+	_input_enabled = is_locally_controlled
 	_clear_pending_targets()
 	_selected_ability_index = -1
 	_selected_ability_name = ""
@@ -191,9 +198,11 @@ func _on_turn_started(unit: TacticalUnit) -> void:
 		grid_manager.clear_danger_zone()
 		_on_unit_selected(unit)
 		_refresh_movement_highlights()
-	elif is_enemy or game_session.should_auto_skip_team(unit.team_id):
+	elif not is_locally_controlled:
 		grid_manager.clear_highlights()
-		grid_manager.show_enemy_range(unit)
+		if is_enemy:
+			grid_manager.show_enemy_range(unit)
+			tactical_camera.focus_on_unit(unit)
 		_execute_enemy_turn(unit)
 	else:
 		grid_manager.clear_highlights()
@@ -295,6 +304,8 @@ func _on_world_mob_clicked(mob: WorldMob) -> void:
 	grid_manager.show_danger_zone(mob.global_position, tactical_camera.vision_range)
 
 func _check_world_mob_encounter(unit: TacticalUnit) -> void:
+	if game_session.selected_map_id == "builtin:arena":
+		return
 	for node: Node in get_tree().get_nodes_in_group("world_mobs"):
 		var mob := node as WorldMob
 		if mob == null or not is_instance_valid(mob):
@@ -377,6 +388,7 @@ func _execute_enemy_turn(unit: TacticalUnit) -> void:
 		await _ai_move_towards(unit, target)
 		if is_instance_valid(unit):
 			grid_manager.show_enemy_range(unit)
+			tactical_camera.focus_on_unit(unit)
 
 	if is_instance_valid(unit) and not unit.is_dead() and is_instance_valid(target) and not target.is_dead():
 		if _is_adjacent(unit.grid_position, target.grid_position):

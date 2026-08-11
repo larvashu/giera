@@ -16,6 +16,7 @@ var starting_compositions: Dictionary[int, Array] = {}
 var match_configured: bool = false
 var local_nickname: String = "Gracz"
 var selected_map_id: String = "builtin:forest"
+var arena_size_index: int = 1  # 0=Kwadrat 1=Normalna 2=Duza 3=BardozoDuza
 
 func configure_mode(mode: GameMode) -> void:
 	game_mode = mode
@@ -46,6 +47,22 @@ func configure_hotseat(
 		1: team_one.character_ids.duplicate(),
 		2: team_two.character_ids.duplicate()
 	}
+	match_configured = true
+
+func configure_arena(count: int, names: Array, teams: Array) -> void:
+	game_mode = GameMode.HOTSEAT
+	player_count = count
+	team_controllers.clear()
+	player_names.clear()
+	selected_team_uuids.clear()
+	starting_compositions.clear()
+	for i: int in range(count):
+		var pid := i + 1
+		team_controllers[i] = ControllerType.LOCAL_HOTSEAT
+		player_names[pid] = names[i] if i < names.size() else "Gracz %d" % pid
+		var team: TeamDefinition = teams[i]
+		selected_team_uuids[pid] = team.team_uuid
+		starting_compositions[pid] = team.character_ids.duplicate()
 	match_configured = true
 
 func clear_match_configuration() -> void:
