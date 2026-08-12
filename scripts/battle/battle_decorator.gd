@@ -800,7 +800,9 @@ func _create_tree_multimesh(variant_index: int, transforms: Array) -> void:
 			var transform := values[index] as Transform3D; transform.origin-=center; multimesh.set_instance_transform(index,transform)
 		var instances := MultiMeshInstance3D.new(); instances.name="ForestTrees_%02d_%d_%d"%[variant_index+1,key.x,key.y]; instances.position=center; instances.multimesh=multimesh
 		instances.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		instances.visibility_range_end=105.0
+		# Tactical camera is high above the board; distance culling from the camera
+		# hid most chunks even while they were inside the orthographic viewport.
+		instances.visibility_range_end = 0.0
 		add_child(instances)
 	source_root.free()
 
