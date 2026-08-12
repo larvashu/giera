@@ -62,6 +62,8 @@ var _definition_visual_rotation: Vector3 = Vector3.ZERO
 var _is_moving: bool = false
 var _visual_root: Node3D
 var _animation_controller := CharacterAnimationController.new()
+const MOVE_STEP_DURATION := 0.125
+const TURN_DURATION := 0.075
 
 func _ready() -> void:
 	collision_layer = 2
@@ -250,15 +252,15 @@ func move_along_path(path: Array[Vector2i], cell_size: float, height_provider: C
 	if path.is_empty() or _is_moving:
 		return
 	_is_moving = true
-	_animation_controller.play_walk()
+	_animation_controller.play_walk(1.3)
 	for cell: Vector2i in path:
 		var target_height: float = float(height_provider.call(cell)) if height_provider.is_valid() else 0.0
 		var target := Vector3(float(cell.x) * cell_size, target_height + 0.05, float(cell.y) * cell_size)
-		_face_world_position(target)
+		_face_world_position(target, true)
 		var tween := create_tween()
 		tween.set_trans(Tween.TRANS_SINE)
 		tween.set_ease(Tween.EASE_IN_OUT)
-		tween.tween_property(self, "position", target, 0.16)
+		tween.tween_property(self, "position", target, MOVE_STEP_DURATION)
 		await tween.finished
 		grid_position = cell
 	_is_moving = false
@@ -269,16 +271,25 @@ func play_attack_animation(target: TacticalUnit = null) -> void:
 		_face_world_position(target.global_position)
 	_animation_controller.play_attack()
 
-func _face_world_position(target: Vector3) -> void:
+func _face_world_position(target: Vector3, immediate: bool = false) -> void:
 	if _visual_root == null:
 		return
 	var direction := target - global_position
 	direction.y = 0.0
 	if direction.length_squared() < 0.0001:
 		return
-	var desired_yaw := atan2(direction.x, direction.z) + deg_to_rad(_definition_visual_rotation.y)
+	# Godot nodes face -Z. The imported visual rotation is an authoring correction,
+	# so it must be applied on top of the -Z heading (PI), not directly to +Z.
+	var desired_yaw := atan2(direction.x, direction.z) + PI + deg_to_rad(_definition_visual_rotation.y)
+	desired_yaw = wrapf(desired_yaw, -PI, PI)
+	if immediate:
+		_visual_root.rotation.y = desired_yaw
+		return
 	var turn := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	turn.tween_property(_visual_root, "rotation:y", desired_yaw, 0.12)
+	turn.tween_method(_set_visual_yaw.bind(_visual_root.rotation.y, desired_yaw), 0.0, 1.0, TURN_DURATION)
+
+func _set_visual_yaw(weight: float, from_yaw: float, to_yaw: float) -> void:
+	_visual_root.rotation.y = lerp_angle(from_yaw, to_yaw, weight)
 
 func _build_visuals() -> void:
 	if _definition_visual_scene != null:

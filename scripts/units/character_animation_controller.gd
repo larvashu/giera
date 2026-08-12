@@ -22,8 +22,8 @@ func play_idle() -> void:
 	_play(&"idle")
 
 
-func play_walk() -> void:
-	_play(&"walk")
+func play_walk(speed_scale: float = 1.0) -> void:
+	_play(&"walk", speed_scale)
 
 
 func play_run() -> void:
@@ -48,9 +48,9 @@ func _on_attack_finished(_animation_name: StringName) -> void:
 	play_idle()
 
 
-func _play(kind: StringName) -> void:
+func _play(kind: StringName, speed_scale: float = 1.0) -> void:
 	if _player != null and _clips.has(kind):
-		_player.play(_clips[kind], 0.15)
+		_player.play(_clips[kind], 0.1, speed_scale)
 
 
 func _register_existing(kind: StringName) -> void:
