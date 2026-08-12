@@ -10,6 +10,7 @@ extends Resource
 @export var max_action_points: int = 6
 @export var initiative: int = 10
 @export var movement_range: int = 6
+@export var footprint_size: Vector2i = Vector2i.ONE
 @export var scene: PackedScene
 @export var visual_scene: PackedScene
 @export var idle_animation_scene: PackedScene
