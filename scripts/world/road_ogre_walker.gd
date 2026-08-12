@@ -10,17 +10,16 @@ const MIN_PAUSE := 3.0
 const MAX_PAUSE := 6.0
 const TURN_BACK_CHANCE := 0.38
 
-var _region: ExplorationRegion
+var _grid_manager: GridManager
 var _direction := 1.0
 var _rng := RandomNumberGenerator.new()
 var _animation_controller := CharacterAnimationController.new()
 var _model: Node3D
 
 
-func setup(region: ExplorationRegion) -> void:
-	_region = region
-	_rng.seed = 8_741_903 + region.coordinate.x * 101 + region.coordinate.y * 307
-	name = "RoamingGloomtusk"
+func setup(grid_manager: GridManager) -> void:
+	_grid_manager = grid_manager
+	_rng.seed = 8_741_903
 	var start_z := 92.0
 	position = _road_position(start_z)
 	_build_visual()
@@ -55,7 +54,7 @@ func _build_visual() -> void:
 
 
 func _roam() -> void:
-	while is_inside_tree() and _region != null and is_instance_valid(_region):
+	while is_inside_tree() and _grid_manager != null and is_instance_valid(_grid_manager):
 		_animation_controller.play_walk(0.47)
 		var leg_distance := _rng.randf_range(MIN_LEG_DISTANCE, MAX_LEG_DISTANCE)
 		var destination_z := clampf(position.z + leg_distance * _direction, MIN_ROAD_Z, MAX_ROAD_Z)
@@ -85,8 +84,8 @@ func _walk_to_z(destination_z: float) -> void:
 
 
 func _road_position(local_z: float) -> Vector3:
-	var local_x := _region._vertical_road_x(local_z)
-	return Vector3(local_x, _region.height_at(local_x, local_z) + 0.05, local_z)
+	var local_x := 80.0 + sin(local_z * 0.055) * 12.0
+	return Vector3(local_x, _grid_manager.terrain_height(local_x, local_z) + 0.05, local_z)
 
 
 func _face_target(target: Vector3) -> void:

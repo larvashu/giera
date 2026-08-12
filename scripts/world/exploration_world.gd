@@ -100,10 +100,10 @@ func _build_environment() -> void:
 	resource.background_color = Color("8fb7cf")
 	resource.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	resource.ambient_light_color = Color("b9c9bc")
-	resource.ambient_light_energy = 0.585
+	resource.ambient_light_energy = 0.65
 	environment.environment = resource
 	add_child(environment)
-	var sun := DirectionalLight3D.new(); sun.rotation_degrees = Vector3(-52.0, -28.0, 0.0); sun.shadow_enabled = true; sun.light_energy = 0.9
+	var sun := DirectionalLight3D.new(); sun.rotation_degrees = Vector3(-52.0, -28.0, 0.0); sun.shadow_enabled = true
 	add_child(sun)
 
 func _build_hud() -> void:

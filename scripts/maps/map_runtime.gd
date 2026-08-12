@@ -11,6 +11,7 @@ const ASSETS: Dictionary[String, String] = {
 	"grass_2": "res://assets/models/environment/grass_clump_02.glb",
 }
 const OBSTACLE_TYPES: Array[String] = ["purple_tree_1", "purple_tree_2", "purple_tree_3", "large_tree"]
+const ROAD_OGRE_SCRIPT := preload("res://scripts/world/road_ogre_walker.gd")
 
 @export var grid_manager: GridManager
 @export var decorator: Node3D
@@ -23,6 +24,10 @@ func _ready() -> void:
 func _apply_selected_map() -> void:
 	var session := get_node("/root/GameSession") as GameSessionState
 	if session.selected_map_id == "builtin:forest":
+		var road_ogre := ROAD_OGRE_SCRIPT.new() as RoadOgreWalker
+		road_ogre.name = "PlayMapRoamingOgre"
+		add_child(road_ogre)
+		road_ogre.setup(grid_manager)
 		return
 	var data: Dictionary = get_node("/root/MapCatalog").load_map(session.selected_map_id)
 	if data.is_empty():

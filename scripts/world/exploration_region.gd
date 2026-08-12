@@ -11,7 +11,6 @@ const TREE_SCENES: Array[PackedScene] = [
 ]
 const LARGE_TREE_SCENE: PackedScene = preload("res://assets/models/environment/large_tree.glb")
 const GRASS_TEXTURE: Texture2D = preload("res://assets/textures/terrain/realistic_grass.png")
-const ROAD_OGRE_SCRIPT := preload("res://scripts/world/road_ogre_walker.gd")
 
 var coordinate := Vector2i.ZERO
 var descriptor: Dictionary = {}
@@ -36,10 +35,6 @@ func _ready() -> void:
 	_build_forest()
 	_build_grass_and_bushes()
 	_build_landmarks()
-	if detailed and coordinate == Vector2i.ZERO:
-		var road_ogre := ROAD_OGRE_SCRIPT.new() as RoadOgreWalker
-		add_child(road_ogre)
-		road_ogre.setup(self)
 
 func height_at(local_x: float, local_z: float) -> float:
 	var gx := local_x + coordinate.x * REGION_SIZE.x
