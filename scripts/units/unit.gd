@@ -62,7 +62,7 @@ var _definition_visual_rotation: Vector3 = Vector3.ZERO
 var _is_moving: bool = false
 var _visual_root: Node3D
 var _animation_controller := CharacterAnimationController.new()
-const MOVE_STEP_DURATION := 0.125
+const MOVE_STEP_DURATION := 0.21
 const TURN_DURATION := 0.075
 
 func _ready() -> void:
@@ -252,7 +252,7 @@ func move_along_path(path: Array[Vector2i], cell_size: float, height_provider: C
 	if path.is_empty() or _is_moving:
 		return
 	_is_moving = true
-	_animation_controller.play_walk(1.3)
+	_animation_controller.play_walk(0.8)
 	for cell: Vector2i in path:
 		var target_height: float = float(height_provider.call(cell)) if height_provider.is_valid() else 0.0
 		var target := Vector3(float(cell.x) * cell_size, target_height + 0.05, float(cell.y) * cell_size)
