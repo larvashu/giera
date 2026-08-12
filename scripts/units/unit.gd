@@ -60,6 +60,8 @@ var _definition_visual_scene: PackedScene
 var _definition_visual_offset: Vector3 = Vector3.ZERO
 var _definition_visual_rotation: Vector3 = Vector3.ZERO
 var _is_moving: bool = false
+var _visual_root: Node3D
+var _animation_controller := CharacterAnimationController.new()
 
 func _ready() -> void:
 	collision_layer = 2
@@ -161,6 +163,7 @@ func take_damage(amount: int) -> void:
 	if amount <= 0 or is_dead():
 		return
 	current_health = maxi(0, current_health - amount)
+	_animation_controller.play_hurt()
 	health_changed.emit(current_health, max_health)
 	stats_changed.emit()
 	_update_overhead_ui()
@@ -247,9 +250,11 @@ func move_along_path(path: Array[Vector2i], cell_size: float, height_provider: C
 	if path.is_empty() or _is_moving:
 		return
 	_is_moving = true
+	_animation_controller.play_walk()
 	for cell: Vector2i in path:
 		var target_height: float = float(height_provider.call(cell)) if height_provider.is_valid() else 0.0
 		var target := Vector3(float(cell.x) * cell_size, target_height + 0.05, float(cell.y) * cell_size)
+		_face_world_position(target)
 		var tween := create_tween()
 		tween.set_trans(Tween.TRANS_SINE)
 		tween.set_ease(Tween.EASE_IN_OUT)
@@ -257,6 +262,23 @@ func move_along_path(path: Array[Vector2i], cell_size: float, height_provider: C
 		await tween.finished
 		grid_position = cell
 	_is_moving = false
+	_animation_controller.play_idle()
+
+func play_attack_animation(target: TacticalUnit = null) -> void:
+	if target != null:
+		_face_world_position(target.global_position)
+	_animation_controller.play_attack()
+
+func _face_world_position(target: Vector3) -> void:
+	if _visual_root == null:
+		return
+	var direction := target - global_position
+	direction.y = 0.0
+	if direction.length_squared() < 0.0001:
+		return
+	var desired_yaw := atan2(direction.x, direction.z) + deg_to_rad(_definition_visual_rotation.y)
+	var turn := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	turn.tween_property(_visual_root, "rotation:y", desired_yaw, 0.12)
 
 func _build_visuals() -> void:
 	if _definition_visual_scene != null:
@@ -267,6 +289,8 @@ func _build_visuals() -> void:
 			model.rotation_degrees = _definition_visual_rotation
 			model.scale = Vector3.ONE * _definition_scale
 			add_child(model)
+			_visual_root = model
+			_animation_controller.setup(model, _character_definition())
 	else:
 		var body_mesh := MeshInstance3D.new()
 		body_mesh.name = "Body"
@@ -286,6 +310,7 @@ func _build_visuals() -> void:
 		head_mesh.mesh = sphere
 		head_mesh.position.y = 1.12
 		add_child(head_mesh)
+		_visual_root = self
 
 	var collision := CollisionShape3D.new()
 	collision.name = "SelectionCollider"
@@ -302,6 +327,10 @@ func _build_visuals() -> void:
 	add_child(_active_marker)
 	_build_overhead_ui()
 	_apply_faction_color()
+
+func _character_definition() -> CharacterDefinition:
+	var catalog := get_node_or_null("/root/TeamSaveManager") as TeamSaveService
+	return catalog.get_character(character_id) if catalog != null else null
 
 func _create_ring(marker_name: String, inner: float, outer: float, color: Color, height: float) -> MeshInstance3D:
 	var marker := MeshInstance3D.new()
