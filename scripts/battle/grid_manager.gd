@@ -28,6 +28,9 @@ var _highlighted_cells: Dictionary[Vector2i, int] = {}
 var _highlight_material: StandardMaterial3D
 var _danger_markers: Dictionary[Vector2i, MeshInstance3D] = {}
 var _danger_material: StandardMaterial3D
+var _ability_range_markers: Dictionary[Vector2i, MeshInstance3D] = {}
+var _ability_range_material: StandardMaterial3D
+var _ability_target_material: StandardMaterial3D
 var _terrain_features: Array[Vector4] = []
 var _terrain_surface: TerrainMapSurface
 var _water_surface: WaterMapSurface
@@ -136,6 +139,8 @@ func get_units() -> Array[TacticalUnit]:
 func _build_grid() -> void:
 	_highlight_material = _create_highlight_material()
 	_danger_material = _create_danger_material()
+	_ability_range_material = _create_ability_range_material()
+	_ability_target_material = _create_ability_target_material()
 	if _terrain_surface != null:
 		return
 	var terrain_mesh := _create_terrain_mesh()
@@ -614,6 +619,71 @@ func clear_danger_zone() -> void:
 	for marker: MeshInstance3D in _danger_markers.values():
 		marker.queue_free()
 	_danger_markers.clear()
+
+func show_ability_range(actor: TacticalUnit, ability_name: String) -> void:
+	clear_ability_range()
+	var ability := AbilityCatalog.get_ability(ability_name)
+	if ability.is_empty():
+		return
+	var ability_range := int(ability.get("range", 1))
+	var target_kind := String(ability.get("target", "enemy"))
+	if target_kind == "self":
+		return
+	var valid_target_cells: Dictionary[Vector2i, bool] = {}
+	for unit: TacticalUnit in get_units():
+		if unit == actor or unit.is_dead():
+			continue
+		if target_kind == "enemy" and unit.team_id == actor.team_id:
+			continue
+		if target_kind == "ally" and unit.team_id != actor.team_id:
+			continue
+		var dist := maxi(absi(unit.grid_position.x - actor.grid_position.x), absi(unit.grid_position.y - actor.grid_position.y))
+		if dist <= ability_range:
+			valid_target_cells[unit.grid_position] = true
+	for dz: int in range(-ability_range, ability_range + 1):
+		for dx: int in range(-ability_range, ability_range + 1):
+			if dx == 0 and dz == 0:
+				continue
+			var cell := actor.grid_position + Vector2i(dx, dz)
+			if not is_inside_grid(cell):
+				continue
+			if maxi(absi(dx), absi(dz)) > ability_range:
+				continue
+			_create_ability_marker(cell, valid_target_cells.has(cell))
+
+func clear_ability_range() -> void:
+	for marker: MeshInstance3D in _ability_range_markers.values():
+		marker.queue_free()
+	_ability_range_markers.clear()
+
+func _create_ability_marker(cell: Vector2i, is_valid_target: bool) -> void:
+	var marker := MeshInstance3D.new()
+	marker.name = "AbilityHighlight_%02d_%02d" % [cell.x, cell.y]
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(0.86, 0.035, 0.86)
+	marker.mesh = mesh
+	marker.position = cell_to_world(cell) + Vector3(0.0, 0.10, 0.0)
+	marker.material_override = _ability_target_material if is_valid_target else _ability_range_material
+	add_child(marker)
+	_ability_range_markers[cell] = marker
+
+func _create_ability_range_material() -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(0.55, 0.1, 0.9, 0.30)
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.emission_enabled = true
+	material.emission = Color(0.4, 0.05, 0.75, 1.0)
+	material.emission_energy_multiplier = 0.7
+	return material
+
+func _create_ability_target_material() -> StandardMaterial3D:
+	var material := StandardMaterial3D.new()
+	material.albedo_color = Color(1.0, 0.65, 0.0, 0.80)
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.emission_enabled = true
+	material.emission = Color(1.0, 0.45, 0.0, 1.0)
+	material.emission_energy_multiplier = 2.0
+	return material
 
 func _create_danger_marker(cell: Vector2i) -> void:
 	var marker := MeshInstance3D.new()

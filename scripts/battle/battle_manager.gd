@@ -106,6 +106,7 @@ func _on_ability_selected(index: int, ability_name: String) -> void:
 		if String(ability.get("target", "enemy")) == "self":
 			_execute_selected_ability(turn_manager.active_unit)
 		else:
+			grid_manager.show_ability_range(turn_manager.active_unit, ability_name)
 			battle_ui.set_phase_message("%s - kliknij cel, aby uzyc" % AbilityCatalog.describe(ability_name))
 	else:
 		_refresh_movement_highlights()
@@ -192,6 +193,7 @@ func _can_control_active_unit() -> bool:
 	)
 
 func _refresh_movement_highlights() -> void:
+	grid_manager.clear_ability_range()
 	grid_manager.clear_highlights()
 	if _can_control_active_unit() and turn_manager.active_unit.can_move_this_turn():
 		grid_manager.show_reachable_cells(turn_manager.active_unit)
@@ -237,6 +239,7 @@ func _on_turn_ended(unit: TacticalUnit) -> void:
 	_input_enabled = false
 	_clear_pending_targets()
 	grid_manager.clear_highlights()
+	grid_manager.clear_ability_range()
 	battle_ui.refresh_details()
 	unit.set_active(false)
 
