@@ -248,6 +248,8 @@ func _spawn_from_definition(
 	var unit := packed_scene.instantiate() as TacticalUnit
 	unit.name = "%s_P%d_%d" % [definition.display_name, owner_player_id, get_units().size()]
 	unit.apply_character_definition(definition, owner_player_id, team, cell)
+	var spawn_cell := _find_nearest_free_cell(cell, unit)
+	unit.grid_position = spawn_cell
 	if profile != null:
 		var profile_manager := get_node("/root/CharacterProfileManager") as CharacterProfileService
 		var modifiers := profile_manager.get_race_modifiers(profile)
@@ -261,9 +263,9 @@ func _spawn_from_definition(
 		unit.max_health = 6 + unit.attributes[&"wytrzymalosc"] * 2
 		unit.current_health = unit.max_health
 		unit.initiative = unit.attributes[&"zrecznosc"] + unit.attributes[&"percepcja"]
-	unit.position = _unit_world_position(unit, cell)
+	unit.position = _unit_world_position(unit, spawn_cell)
 	add_child(unit)
-	_set_unit_occupancy(unit, cell)
+	_set_unit_occupancy(unit, spawn_cell)
 	unit.died.connect(_on_unit_died)
 
 func _on_unit_died(unit: TacticalUnit) -> void:
