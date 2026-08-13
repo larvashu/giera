@@ -63,7 +63,7 @@ var _definition_visual_rotation: Vector3 = Vector3.ZERO
 var _is_moving: bool = false
 var _visual_root: Node3D
 var _animation_controller := CharacterAnimationController.new()
-const MOVE_STEP_DURATION := 0.75
+const MOVE_STEP_DURATION := 0.45
 const TURN_DURATION := 0.075
 
 func _ready() -> void:
