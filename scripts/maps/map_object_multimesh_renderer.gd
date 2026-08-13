@@ -78,7 +78,9 @@ func _build_group(key: String, entries: Array) -> void:
 		instance.name = "%s_Part%d" % [key.replace("|", "_"), part_index]
 		instance.multimesh = multimesh
 		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if _obstacle_types.has(kind) else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		instance.visibility_range_end = 150.0 if _obstacle_types.has(kind) else 75.0
+		# Trees must remain visible from the elevated isometric camera. A zero end
+		# range disables distance culling while retaining regular frustum culling.
+		instance.visibility_range_end = 0.0 if _obstacle_types.has(kind) else 75.0
 		instance.visibility_range_fade_mode = GeometryInstance3D.VISIBILITY_RANGE_FADE_SELF
 		add_child(instance)
 	if _create_collisions and _obstacle_types.has(kind):

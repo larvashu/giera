@@ -228,7 +228,9 @@ func _add_chunked_mesh_multimesh(instance_name:String,mesh:Mesh,transforms:Array
 		_add_mesh_multimesh(chunk_name,mesh,adjusted,false)
 		var renderer:=get_node(chunk_name) as MultiMeshInstance3D
 		renderer.position=center
-		renderer.visibility_range_end=95.0
+		# Regions are also observed by the elevated tactical camera. Camera-distance
+		# culling made forest chunks disappear in isometric mode.
+		renderer.visibility_range_end=0.0
 		renderer.visibility_range_end_margin=0.0
 		renderer.visibility_range_fade_mode=GeometryInstance3D.VISIBILITY_RANGE_FADE_DISABLED
 

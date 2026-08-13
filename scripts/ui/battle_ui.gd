@@ -8,6 +8,8 @@ signal ability_selected(index: int, ability_name: String)
 
 const ACTIVE_AP_COLOR := Color(0.18, 0.9, 0.34, 1.0)
 const SPENT_AP_COLOR := Color(0.32, 0.35, 0.38, 1.0)
+const SKILL_SLOT_SIZE := Vector2(72.0, 72.0)
+const EMPTY_SLOT_ICON_INDEX := 47
 const PLAYER_COLORS: Array[Color] = [
 	Color(0.18, 0.68, 1.0, 1.0),
 	Color(0.95, 0.28, 0.22, 1.0),
@@ -159,13 +161,45 @@ func _rebuild_skill_bar() -> void:
 	skill_bar.visible = true
 	skill_caption.text = "Umiejetnosci: %s" % _active_unit.display_name
 	for index: int in range(mini(9, _active_unit.abilities.size())):
-		var button := Button.new()
-		button.custom_minimum_size = Vector2(150.0, 44.0)
-		button.toggle_mode = true
-		button.text = "%d  %s" % [index + 1, _active_unit.abilities[index]]
-		button.tooltip_text = AbilityCatalog.describe(_active_unit.abilities[index])
+		var ability_name := _active_unit.abilities[index]
+		var button := _create_skill_slot(AbilityCatalog.icon_index(ability_name), str(index + 1))
+		button.tooltip_text = AbilityCatalog.describe(ability_name)
 		button.pressed.connect(_select_ability.bind(index))
 		skill_buttons.add_child(button)
+	var empty_slot := _create_skill_slot(EMPTY_SLOT_ICON_INDEX, "+")
+	empty_slot.disabled = true
+	empty_slot.tooltip_text = "Wolny slot umiejetnosci\nMiejsce na przyszly skill tej postaci."
+	skill_buttons.add_child(empty_slot)
+
+func _create_skill_slot(atlas_index: int, hotkey_text: String) -> Button:
+	var button := Button.new()
+	button.custom_minimum_size = SKILL_SLOT_SIZE
+	button.toggle_mode = true
+	button.icon = _skill_icon(atlas_index)
+	button.expand_icon = true
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	var hotkey := Label.new()
+	hotkey.text = hotkey_text
+	hotkey.position = Vector2(5.0, 3.0)
+	hotkey.add_theme_font_size_override("font_size", 13)
+	hotkey.add_theme_color_override("font_color", Color(1.0, 0.9, 0.58, 1.0))
+	hotkey.add_theme_color_override("font_outline_color", Color(0.02, 0.02, 0.02, 1.0))
+	hotkey.add_theme_constant_override("outline_size", 4)
+	hotkey.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	button.add_child(hotkey)
+	return button
+
+func _skill_icon(atlas_index: int) -> AtlasTexture:
+	var texture := load(AbilityCatalog.ICON_ATLAS_PATH) as Texture2D
+	var icon := AtlasTexture.new()
+	icon.atlas = texture
+	if texture == null:
+		return icon
+	var cell_size := Vector2(texture.get_width(), texture.get_height()) / float(AbilityCatalog.ICON_GRID_SIZE)
+	var column := atlas_index % AbilityCatalog.ICON_GRID_SIZE
+	var row := floori(float(atlas_index) / float(AbilityCatalog.ICON_GRID_SIZE))
+	icon.region = Rect2(Vector2(float(column), float(row)) * cell_size, cell_size)
+	return icon
 
 func _select_ability(index: int) -> void:
 	if _active_unit == null or index < 0 or index >= _active_unit.abilities.size():

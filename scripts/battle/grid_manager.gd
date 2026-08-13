@@ -253,6 +253,8 @@ func _spawn_from_definition(
 	var unit := packed_scene.instantiate() as TacticalUnit
 	unit.name = "%s_P%d_%d" % [definition.display_name, owner_player_id, get_units().size()]
 	unit.apply_character_definition(definition, owner_player_id, team, cell)
+	var spawn_cell := _find_nearest_free_cell(cell, unit)
+	unit.grid_position = spawn_cell
 	if profile != null:
 		var profile_manager := get_node("/root/CharacterProfileManager") as CharacterProfileService
 		var modifiers := profile_manager.get_race_modifiers(profile)
@@ -266,13 +268,13 @@ func _spawn_from_definition(
 		unit.max_health = 6 + unit.attributes[&"wytrzymalosc"] * 2
 		unit.current_health = unit.max_health
 		unit.initiative = unit.attributes[&"zrecznosc"] + unit.attributes[&"percepcja"]
-	unit.position = cell_to_world(cell) + Vector3(0.0, 0.05, 0.0)
+	unit.position = _unit_world_position(unit, spawn_cell)
 	add_child(unit)
-	_occupancy[cell] = unit
+	_set_unit_occupancy(unit, spawn_cell)
 	unit.died.connect(_on_unit_died)
 
 func _on_unit_died(unit: TacticalUnit) -> void:
-	_occupancy.erase(unit.grid_position)
+	_clear_unit_occupancy(unit)
 	clear_highlights()
 
 func show_reachable_cells(unit: TacticalUnit) -> void:
@@ -300,6 +302,7 @@ func is_cell_highlighted(cell: Vector2i) -> bool:
 	return _highlighted_cells.has(cell)
 
 func get_reachable_cells(start: Vector2i, action_points: int) -> Dictionary[Vector2i, int]:
+	var mover: TacticalUnit = _occupancy.get(start) as TacticalUnit
 	var distances: Dictionary[Vector2i, int] = {start: 0}
 	var frontier: Array[Vector2i] = [start]
 	var head: int = 0
@@ -311,7 +314,7 @@ func get_reachable_cells(start: Vector2i, action_points: int) -> Dictionary[Vect
 			continue
 		for direction: Vector2i in DIRECTIONS:
 			var next := current + direction
-			if not _can_step(current, next) or distances.has(next):
+			if not _can_step(current, next, mover) or distances.has(next):
 				continue
 			distances[next] = current_distance + 1
 			frontier.append(next)
@@ -319,7 +322,8 @@ func get_reachable_cells(start: Vector2i, action_points: int) -> Dictionary[Vect
 	return distances
 
 func find_path(start: Vector2i, goal: Vector2i, max_cost: int) -> Array[Vector2i]:
-	if not is_inside_grid(goal) or _occupancy.has(goal) or _blocked_cells.has(goal):
+	var mover: TacticalUnit = _occupancy.get(start) as TacticalUnit
+	if not _can_occupy(goal, mover):
 		return []
 	var came_from: Dictionary[Vector2i, Vector2i] = {}
 	var distances: Dictionary[Vector2i, int] = {start: 0}
@@ -335,7 +339,7 @@ func find_path(start: Vector2i, goal: Vector2i, max_cost: int) -> Array[Vector2i
 			continue
 		for direction: Vector2i in DIRECTIONS:
 			var next := current + direction
-			if not _can_step(current, next) or distances.has(next):
+			if not _can_step(current, next, mover) or distances.has(next):
 				continue
 			distances[next] = current_distance + 1
 			came_from[next] = current
@@ -349,8 +353,8 @@ func find_path(start: Vector2i, goal: Vector2i, max_cost: int) -> Array[Vector2i
 		step = came_from[step]
 	return path
 
-func _can_step(from_cell: Vector2i, to_cell: Vector2i) -> bool:
-	if not is_inside_grid(to_cell) or _occupancy.has(to_cell) or _blocked_cells.has(to_cell):
+func _can_step(from_cell: Vector2i, to_cell: Vector2i, mover: TacticalUnit = null) -> bool:
+	if not _can_occupy(to_cell, mover):
 		return false
 	var delta := to_cell - from_cell
 	var is_diagonal := absi(delta.x) == 1 and absi(delta.y) == 1
@@ -358,18 +362,24 @@ func _can_step(from_cell: Vector2i, to_cell: Vector2i) -> bool:
 		return true
 	var horizontal_neighbor := Vector2i(to_cell.x, from_cell.y)
 	var vertical_neighbor := Vector2i(from_cell.x, to_cell.y)
-	return (
-		not _occupancy.has(horizontal_neighbor)
-		and not _occupancy.has(vertical_neighbor)
-		and not _blocked_cells.has(horizontal_neighbor)
-		and not _blocked_cells.has(vertical_neighbor)
-	)
+	return _can_occupy(horizontal_neighbor, mover) and _can_occupy(vertical_neighbor, mover)
+
+func _can_occupy(anchor: Vector2i, mover: TacticalUnit = null) -> bool:
+	var size := mover.footprint_size if mover != null else Vector2i.ONE
+	for x: int in size.x:
+		for y: int in size.y:
+			var cell := anchor + Vector2i(x, y)
+			if not is_inside_grid(cell) or _blocked_cells.has(cell):
+				return false
+			if _occupancy.has(cell) and _occupancy[cell] != mover:
+				return false
+	return true
 
 func move_occupant(unit: TacticalUnit, destination: Vector2i) -> bool:
-	if _occupancy.has(destination) or _occupancy.get(unit.grid_position) != unit:
+	if not _can_occupy(destination, unit) or _occupancy.get(unit.grid_position) != unit:
 		return false
-	_occupancy.erase(unit.grid_position)
-	_occupancy[destination] = unit
+	_clear_unit_occupancy(unit)
+	_set_unit_occupancy(unit, destination)
 	return true
 
 func relocate_occupant_from_world(unit: TacticalUnit, world_position: Vector3) -> Vector2i:
@@ -381,10 +391,10 @@ func relocate_occupant_from_world(unit: TacticalUnit, world_position: Vector3) -
 		preferred.x = clampi(preferred.x, 0, GRID_WIDTH - 1)
 		preferred.y = clampi(preferred.y, 0, GRID_HEIGHT - 1)
 	var destination := _find_nearest_free_cell(preferred, unit)
-	_occupancy.erase(unit.grid_position)
-	_occupancy[destination] = unit
+	_clear_unit_occupancy(unit)
+	_set_unit_occupancy(unit, destination)
 	unit.grid_position = destination
-	unit.position = cell_to_world(destination) + Vector3(0.0, 0.05, 0.0)
+	unit.position = _unit_world_position(unit, destination)
 	return destination
 
 func _find_nearest_free_cell(origin: Vector2i, unit: TacticalUnit) -> Vector2i:
@@ -416,7 +426,21 @@ func find_nearest_free_spawn_cell(origin: Vector2i) -> Vector2i:
 	return origin
 
 func _is_free_for_relocation(cell: Vector2i, unit: TacticalUnit) -> bool:
-	return is_inside_grid(cell) and not _blocked_cells.has(cell) and (not _occupancy.has(cell) or _occupancy[cell] == unit)
+	return _can_occupy(cell, unit)
+
+func _set_unit_occupancy(unit: TacticalUnit, anchor: Vector2i) -> void:
+	for cell: Vector2i in unit.occupied_cells(anchor):
+		_occupancy[cell] = unit
+
+func _clear_unit_occupancy(unit: TacticalUnit) -> void:
+	for cell: Vector2i in _occupancy.keys():
+		if _occupancy[cell] == unit:
+			_occupancy.erase(cell)
+
+func _unit_world_position(unit: TacticalUnit, anchor: Vector2i) -> Vector3:
+	var center_x := float(anchor.x) + float(unit.footprint_size.x - 1) * 0.5
+	var center_z := float(anchor.y) + float(unit.footprint_size.y - 1) * 0.5
+	return Vector3(center_x * CELL_SIZE, terrain_height(center_x, center_z) + 0.05, center_z * CELL_SIZE)
 
 func cell_to_world(cell: Vector2i) -> Vector3:
 	return Vector3(float(cell.x) * CELL_SIZE, terrain_height(float(cell.x), float(cell.y)), float(cell.y) * CELL_SIZE)

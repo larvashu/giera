@@ -31,6 +31,7 @@ const DEFAULT_ABILITIES: Dictionary = {
 @export var team_slot_cost: int = 1
 @export var display_name: String = "Jednostka"
 @export var grid_position: Vector2i = Vector2i.ZERO
+@export var footprint_size: Vector2i = Vector2i.ONE
 @export var max_health: int = 10
 @export var current_health: int = 10
 @export var max_action_points: int = 6
@@ -60,6 +61,10 @@ var _definition_visual_scene: PackedScene
 var _definition_visual_offset: Vector3 = Vector3.ZERO
 var _definition_visual_rotation: Vector3 = Vector3.ZERO
 var _is_moving: bool = false
+var _visual_root: Node3D
+var _animation_controller := CharacterAnimationController.new()
+const MOVE_STEP_DURATION := 0.75
+const TURN_DURATION := 0.075
 
 func _ready() -> void:
 	collision_layer = 2
@@ -118,13 +123,14 @@ func apply_character_definition(
 	max_action_points = definition.max_action_points
 	current_action_points = max_action_points
 	initiative = definition.initiative
+	footprint_size = Vector2i(maxi(1, definition.footprint_size.x), maxi(1, definition.footprint_size.y))
 	_definition_color = definition.visual_color
 	_definition_scale = definition.visual_scale
 	_definition_visual_scene = definition.visual_scene
 	_definition_visual_offset = definition.visual_offset
 	_definition_visual_rotation = definition.visual_rotation_degrees
 	is_alive = true
-	position = Vector3(float(grid_position.x), 0.05, float(grid_position.y))
+	position = _anchor_world_position(grid_position)
 	if is_node_ready():
 		_apply_faction_color()
 		_update_overhead_ui()
@@ -161,6 +167,7 @@ func take_damage(amount: int) -> void:
 	if amount <= 0 or is_dead():
 		return
 	current_health = maxi(0, current_health - amount)
+	_animation_controller.play_hurt()
 	health_changed.emit(current_health, max_health)
 	stats_changed.emit()
 	_update_overhead_ui()
@@ -247,16 +254,59 @@ func move_along_path(path: Array[Vector2i], cell_size: float, height_provider: C
 	if path.is_empty() or _is_moving:
 		return
 	_is_moving = true
+	_animation_controller.play_walk(0.47)
 	for cell: Vector2i in path:
 		var target_height: float = float(height_provider.call(cell)) if height_provider.is_valid() else 0.0
-		var target := Vector3(float(cell.x) * cell_size, target_height + 0.05, float(cell.y) * cell_size)
+		var footprint_offset := Vector3(float(footprint_size.x - 1), 0.0, float(footprint_size.y - 1)) * cell_size * 0.5
+		var target := Vector3(float(cell.x) * cell_size, target_height + 0.05, float(cell.y) * cell_size) + footprint_offset
+		_face_world_position(target, true)
 		var tween := create_tween()
 		tween.set_trans(Tween.TRANS_SINE)
 		tween.set_ease(Tween.EASE_IN_OUT)
-		tween.tween_property(self, "position", target, 0.16)
+		tween.tween_property(self, "position", target, MOVE_STEP_DURATION)
 		await tween.finished
 		grid_position = cell
 	_is_moving = false
+	_animation_controller.play_idle()
+
+func occupied_cells(anchor: Vector2i = grid_position) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	for x: int in footprint_size.x:
+		for y: int in footprint_size.y:
+			cells.append(anchor + Vector2i(x, y))
+	return cells
+
+func _anchor_world_position(anchor: Vector2i) -> Vector3:
+	return Vector3(
+		float(anchor.x) + float(footprint_size.x - 1) * 0.5,
+		0.05,
+		float(anchor.y) + float(footprint_size.y - 1) * 0.5
+	)
+
+func play_attack_animation(target: TacticalUnit = null) -> void:
+	if target != null:
+		_face_world_position(target.global_position)
+	_animation_controller.play_attack()
+
+func _face_world_position(target: Vector3, immediate: bool = false) -> void:
+	if _visual_root == null:
+		return
+	var direction := target - global_position
+	direction.y = 0.0
+	if direction.length_squared() < 0.0001:
+		return
+	# Godot nodes face -Z. The imported visual rotation is an authoring correction,
+	# so it must be applied on top of the -Z heading (PI), not directly to +Z.
+	var desired_yaw := atan2(direction.x, direction.z) + PI + deg_to_rad(_definition_visual_rotation.y)
+	desired_yaw = wrapf(desired_yaw, -PI, PI)
+	if immediate:
+		_visual_root.rotation.y = desired_yaw
+		return
+	var turn := create_tween().set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	turn.tween_method(_set_visual_yaw.bind(_visual_root.rotation.y, desired_yaw), 0.0, 1.0, TURN_DURATION)
+
+func _set_visual_yaw(weight: float, from_yaw: float, to_yaw: float) -> void:
+	_visual_root.rotation.y = lerp_angle(from_yaw, to_yaw, weight)
 
 func _build_visuals() -> void:
 	if _definition_visual_scene != null:
@@ -267,6 +317,8 @@ func _build_visuals() -> void:
 			model.rotation_degrees = _definition_visual_rotation
 			model.scale = Vector3.ONE * _definition_scale
 			add_child(model)
+			_visual_root = model
+			_animation_controller.setup(model, _character_definition())
 	else:
 		var body_mesh := MeshInstance3D.new()
 		body_mesh.name = "Body"
@@ -286,22 +338,28 @@ func _build_visuals() -> void:
 		head_mesh.mesh = sphere
 		head_mesh.position.y = 1.12
 		add_child(head_mesh)
+		_visual_root = self
 
 	var collision := CollisionShape3D.new()
 	collision.name = "SelectionCollider"
 	var shape := CapsuleShape3D.new()
-	shape.radius = 0.38
-	shape.height = 1.45
+	shape.radius = 0.75 if footprint_size != Vector2i.ONE else 0.38
+	shape.height = 2.8 if footprint_size != Vector2i.ONE else 1.45
 	collision.shape = shape
-	collision.position.y = 0.7
+	collision.position.y = 1.35 if footprint_size != Vector2i.ONE else 0.7
 	add_child(collision)
 
-	_selection_marker = _create_ring("SelectionMarker", 0.43, 0.53, Color(1.0, 0.72, 0.08, 1.0), 0.04)
+	var large_footprint := footprint_size != Vector2i.ONE
+	_selection_marker = _create_ring("SelectionMarker", 0.9 if large_footprint else 0.43, 1.08 if large_footprint else 0.53, Color(1.0, 0.72, 0.08, 1.0), 0.04)
 	add_child(_selection_marker)
-	_active_marker = _create_ring("ActiveTurnMarker", 0.57, 0.66, Color(0.1, 1.0, 0.95, 1.0), 0.055)
+	_active_marker = _create_ring("ActiveTurnMarker", 1.12 if large_footprint else 0.57, 1.3 if large_footprint else 0.66, Color(0.1, 1.0, 0.95, 1.0), 0.055)
 	add_child(_active_marker)
 	_build_overhead_ui()
 	_apply_faction_color()
+
+func _character_definition() -> CharacterDefinition:
+	var catalog := get_node_or_null("/root/TeamSaveManager") as TeamSaveService
+	return catalog.get_character(character_id) if catalog != null else null
 
 func _create_ring(marker_name: String, inner: float, outer: float, color: Color, height: float) -> MeshInstance3D:
 	var marker := MeshInstance3D.new()
@@ -322,9 +380,10 @@ func _create_ring(marker_name: String, inner: float, outer: float, color: Color,
 	return marker
 
 func _build_overhead_ui() -> void:
+	var overhead_scale := 1.9 if footprint_size != Vector2i.ONE else 1.0
 	_name_label = Label3D.new()
 	_name_label.name = "NameLabel"
-	_name_label.position = Vector3(0.0, 1.78, 0.0)
+	_name_label.position = Vector3(0.0, 1.78 * overhead_scale, 0.0)
 	_name_label.font_size = 38
 	_name_label.outline_size = 8
 	_name_label.pixel_size = 0.006
@@ -337,7 +396,7 @@ func _build_overhead_ui() -> void:
 	var back_quad := QuadMesh.new()
 	back_quad.size = Vector2(1.05, 0.12)
 	health_back.mesh = back_quad
-	health_back.position = Vector3(0.0, 1.57, 0.0)
+	health_back.position = Vector3(0.0, 1.57 * overhead_scale, 0.0)
 	health_back.material_override = _create_billboard_material(Color(0.05, 0.05, 0.06, 0.95))
 	add_child(health_back)
 
@@ -346,7 +405,7 @@ func _build_overhead_ui() -> void:
 	var fill_quad := QuadMesh.new()
 	fill_quad.size = Vector2(1.0, 0.075)
 	_health_fill.mesh = fill_quad
-	_health_fill.position = Vector3(0.0, 1.57, 0.01)
+	_health_fill.position = Vector3(0.0, 1.57 * overhead_scale, 0.01)
 	_health_fill.material_override = _create_billboard_material(
 		Color(0.12, 0.75, 1.0, 1.0) if is_player_controlled() else Color(1.0, 0.24, 0.18, 1.0)
 	)
@@ -354,7 +413,7 @@ func _build_overhead_ui() -> void:
 
 	_stats_label = Label3D.new()
 	_stats_label.name = "StatsLabel"
-	_stats_label.position = Vector3(0.0, 1.39, 0.0)
+	_stats_label.position = Vector3(0.0, 1.39 * overhead_scale, 0.0)
 	_stats_label.font_size = 30
 	_stats_label.outline_size = 7
 	_stats_label.pixel_size = 0.0055
@@ -367,6 +426,7 @@ func _build_action_point_dots() -> void:
 	_active_ap_material = _create_dot_material(Color(0.18, 0.95, 0.35, 1.0))
 	_spent_ap_material = _create_dot_material(Color(0.28, 0.31, 0.34, 1.0))
 	var spacing: float = 0.16
+	var dots_height := 3.62 if footprint_size != Vector2i.ONE else 1.98
 	var start_x: float = -float(max_action_points - 1) * spacing * 0.5
 	for index: int in range(max_action_points):
 		var dot := MeshInstance3D.new()
@@ -375,7 +435,7 @@ func _build_action_point_dots() -> void:
 		sphere.radius = 0.055
 		sphere.height = 0.11
 		dot.mesh = sphere
-		dot.position = Vector3(start_x + float(index) * spacing, 1.98, 0.0)
+		dot.position = Vector3(start_x + float(index) * spacing, dots_height, 0.0)
 		dot.material_override = _active_ap_material
 		dot.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_child(dot)

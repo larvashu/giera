@@ -511,15 +511,20 @@ func _make_class_row(pi: int, ci: int) -> Control:
 
 	# Icon
 	var icon := PanelContainer.new()
-	icon.custom_minimum_size = Vector2(34, 34)
+	icon.custom_minimum_size = Vector2(48, 48) if _chars[ci].visual_scene != null else Vector2(34, 34)
 	_panel_style(icon, C_ICON_BG, C_BORDER)
-	var icon_lbl := Label.new()
-	icon_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	icon_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	icon_lbl.add_theme_font_size_override("font_size", 9)
-	icon_lbl.add_theme_color_override("font_color", PLAYER_ACCENTS[pi])
-	icon_lbl.text = _code(_chars[ci])
-	icon.add_child(icon_lbl)
+	if _chars[ci].visual_scene != null:
+		var portrait := CharacterModelPortrait.new()
+		portrait.setup(_chars[ci], Vector2(48, 48))
+		icon.add_child(portrait)
+	else:
+		var icon_lbl := Label.new()
+		icon_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		icon_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		icon_lbl.add_theme_font_size_override("font_size", 9)
+		icon_lbl.add_theme_color_override("font_color", PLAYER_ACCENTS[pi])
+		icon_lbl.text = _code(_chars[ci])
+		icon.add_child(icon_lbl)
 	hbox.add_child(icon)
 
 	# Text
@@ -735,15 +740,20 @@ func _build_roster_panel(pi: int) -> Control:
 		entry_margin.add_child(entry)
 
 		var icon := PanelContainer.new()
-		icon.custom_minimum_size = Vector2(38, 38)
+		icon.custom_minimum_size = Vector2(56, 56) if def.visual_scene != null else Vector2(38, 38)
 		_panel_style(icon, C_ICON_BG, PLAYER_ACCENTS[pi])
-		var icon_lbl := Label.new()
-		icon_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		icon_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		icon_lbl.add_theme_font_size_override("font_size", 10)
-		icon_lbl.add_theme_color_override("font_color", PLAYER_ACCENTS[pi])
-		icon_lbl.text = _code(def)
-		icon.add_child(icon_lbl)
+		if def.visual_scene != null:
+			var portrait := CharacterModelPortrait.new()
+			portrait.setup(def, Vector2(56, 56))
+			icon.add_child(portrait)
+		else:
+			var icon_lbl := Label.new()
+			icon_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			icon_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			icon_lbl.add_theme_font_size_override("font_size", 10)
+			icon_lbl.add_theme_color_override("font_color", PLAYER_ACCENTS[pi])
+			icon_lbl.text = _code(def)
+			icon.add_child(icon_lbl)
 		entry.add_child(icon)
 
 		var text_vb := VBoxContainer.new()

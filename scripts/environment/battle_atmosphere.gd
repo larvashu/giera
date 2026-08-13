@@ -8,6 +8,16 @@ const MOON_DIRECTION := Vector3(-0.42, 0.48, -0.77)
 func _ready() -> void:
 	_configure_moonlit_environment()
 	_configure_moon_light()
+	var session := get_node_or_null("/root/GameSession") as GameSessionState
+	if session != null and session.selected_map_id != "builtin:arena":
+		_darken_play_map_lighting()
+
+func _darken_play_map_lighting() -> void:
+	if environment != null:
+		environment.ambient_light_energy *= 0.9
+		environment.background_energy_multiplier *= 0.9
+	if sun != null:
+		sun.light_energy *= 0.9
 
 func _configure_arena_environment() -> void:
 	var env := environment.duplicate(true) as Environment if environment != null else Environment.new()

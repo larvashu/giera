@@ -56,6 +56,10 @@ func _rebuild_character_list() -> void:
 		character_list.add_child(profile_row)
 	for definition: CharacterDefinition in save_manager.get_character_definitions():
 		var row := HBoxContainer.new()
+		if definition.visual_scene != null:
+			var portrait := CharacterModelPortrait.new()
+			portrait.setup(definition, Vector2(64, 64))
+			row.add_child(portrait)
 		var label := Label.new()
 		label.text = "%s | %s | koszt %d | HP %d | inicjatywa %d" % [
 			definition.display_name, definition.role_name, definition.team_slot_cost,

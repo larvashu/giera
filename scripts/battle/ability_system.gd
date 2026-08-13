@@ -35,6 +35,7 @@ func execute(actor: TacticalUnit, target: TacticalUnit, ability_name: String) ->
 	var cost := int(ability.get("cost", 0))
 	if not actor.spend_action_points(cost):
 		return {"ok": false, "message": "Nie udalo sie wydac punktow akcji"}
+	actor.play_attack_animation(target)
 	var effect := String(ability.get("effect", "damage"))
 	var recipients: Array[TacticalUnit] = [target]
 	if effect.begins_with("area_"):
