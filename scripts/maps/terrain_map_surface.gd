@@ -3,8 +3,9 @@ extends Node3D
 
 const MAP_SIZE := Vector2i(160, 190)
 const REGION_LOCATION := Vector2i.ZERO
-const MIN_HEIGHT := -12.0
-const MAX_HEIGHT := 18.0
+## Wide sculpting range for deep valleys and genuinely mountain-scale terrain.
+const MIN_HEIGHT := -128.0
+const MAX_HEIGHT := 512.0
 const TERRAIN_TEXTURE_SIZE := 1024
 const PBR_ROOT := "res://assets/textures/terrain/ambientcg_2k/"
 const GLHF_ROOT := "res://assets/environment/terrain/glhf/"
@@ -28,6 +29,8 @@ const BLANK_TEXTURE_ID := 13
 
 var terrain: Terrain3D
 var _region: Terrain3DRegion
+var _regions: Array[Terrain3DRegion] = []
+var _editable_map_size := MAP_SIZE
 var _data_directory: String = ""
 ## Legacy overlay storage retained only for backward-compatible helper methods.
 ## The editor no longer creates this surface; Terrain3D renders directly.
@@ -54,6 +57,8 @@ func setup(camera: Camera3D = null, data_directory: String = "", legacy_strokes:
 	_region = terrain.data.get_region(REGION_LOCATION)
 	if _region == null:
 		_region = terrain.data.add_region_blank(REGION_LOCATION, false)
+	_regions = [_region]
+	if data_directory.is_empty():
 		_initialize_base_height()
 	_ensure_paintable_control()
 	# Terrain3D keeps editable Images on the CPU and separate textures on the GPU.
@@ -61,6 +66,28 @@ func setup(camera: Camera3D = null, data_directory: String = "", legacy_strokes:
 	terrain.data.update_maps(Terrain3DRegion.TYPE_MAX, true, false)
 	if not legacy_strokes.is_empty():
 		_import_legacy_strokes(legacy_strokes)
+
+func set_map_size_multiplier(multiplier: int) -> void:
+	if terrain == null:
+		return
+	var safe_multiplier := clampi(multiplier, 1, 8)
+	_editable_map_size = MAP_SIZE * safe_multiplier
+	terrain.vertex_spacing = 1.0
+	terrain.mesh_lods = 7 if safe_multiplier >= 4 else 5
+	var region_columns := ceili(float(_editable_map_size.x) / float(terrain.region_size))
+	var region_rows := ceili(float(_editable_map_size.y) / float(terrain.region_size))
+	for existing_location: Vector2i in terrain.data.get_region_locations():
+		if existing_location.x < 0 or existing_location.y < 0 or existing_location.x >= region_columns or existing_location.y >= region_rows:
+			terrain.data.remove_regionl(existing_location, false)
+	_regions.clear()
+	for region_z: int in range(region_rows):
+		for region_x: int in range(region_columns):
+			var location := Vector2i(region_x, region_z)
+			var region := terrain.data.get_region(location)
+			if region == null:
+				region = terrain.data.add_region_blank(location, false)
+			_regions.append(region)
+	_region = terrain.data.get_region(REGION_LOCATION)
 
 func import_height_sampler(sampler: Callable) -> void:
 	if terrain == null or _region == null or not sampler.is_valid():
@@ -76,9 +103,9 @@ func apply_brush(center: Vector3, radius: float, strength: float, operation: Str
 	if terrain == null or _region == null:
 		return
 	var min_x := maxi(0, floori(center.x - radius))
-	var max_x := mini(MAP_SIZE.x - 1, ceili(center.x + radius))
+	var max_x := mini(_editable_map_size.x - 1, ceili(center.x + radius))
 	var min_z := maxi(0, floori(center.z - radius))
-	var max_z := mini(MAP_SIZE.y - 1, ceili(center.z + radius))
+	var max_z := mini(_editable_map_size.y - 1, ceili(center.z + radius))
 	var changes: Array[Vector3] = []
 	for z: int in range(min_z, max_z + 1):
 		for x: int in range(min_x, max_x + 1):
@@ -126,9 +153,9 @@ func paint_texture(center: Vector3, radius: float, strength: float, texture_id: 
 	if terrain == null or _region == null or texture_id < 0 or texture_id >= PAINT_TEXTURES.size():
 		return
 	var min_x := maxi(0, floori(center.x - radius))
-	var max_x := mini(MAP_SIZE.x - 1, ceili(center.x + radius))
+	var max_x := mini(_editable_map_size.x - 1, ceili(center.x + radius))
 	var min_z := maxi(0, floori(center.z - radius))
-	var max_z := mini(MAP_SIZE.y - 1, ceili(center.z + radius))
+	var max_z := mini(_editable_map_size.y - 1, ceili(center.z + radius))
 	for z: int in range(min_z, max_z + 1):
 		for x: int in range(min_x, max_x + 1):
 			var distance := Vector2(float(x) - center.x, float(z) - center.z).length()
@@ -150,11 +177,9 @@ func paint_texture(center: Vector3, radius: float, strength: float, texture_id: 
 				blend = maxf(0.0, blend - paint_amount)
 				terrain.data.set_control_blend(point, blend)
 			elif overlay_id == texture_id:
-				blend = minf(1.0, blend + paint_amount)
-				if blend > 0.94:
-					terrain.data.set_control_base_id(point, texture_id)
-					terrain.data.set_control_overlay_id(point, texture_id)
-					blend = 0.0
+				# Keep both layers alive at the center of a stroke. Collapsing them
+				# into one layer produced a visible hard ring between brush passes.
+				blend = minf(0.995, blend + paint_amount)
 				terrain.data.set_control_blend(point, blend)
 			else:
 				if blend > 0.5:
@@ -162,10 +187,37 @@ func paint_texture(center: Vector3, radius: float, strength: float, texture_id: 
 				terrain.data.set_control_overlay_id(point, texture_id)
 				terrain.data.set_control_blend(point, paint_amount)
 			terrain.data.set_control_auto(point, false)
+			terrain.data.set_control_angle(point, _texture_rotation_for_cell(x, z, texture_id))
 			var current_color := terrain.data.get_color(point)
 			terrain.data.set_color(point, current_color.lerp(Color.WHITE, clampf(strength * 0.24 * influence, 0.0, 1.0)))
 	terrain.data.update_maps(Terrain3DRegion.TYPE_CONTROL, true, false)
 	terrain.data.update_maps(Terrain3DRegion.TYPE_COLOR, true, false)
+
+func fill_texture_rect(rect: Rect2i, texture_id: int) -> void:
+	if terrain == null or _region == null or texture_id < 0 or texture_id >= PAINT_TEXTURES.size():
+		return
+	var clipped := rect.abs().intersection(Rect2i(Vector2i.ZERO, _editable_map_size))
+	if clipped.size.x <= 0 or clipped.size.y <= 0:
+		return
+	for z: int in range(clipped.position.y, clipped.end.y):
+		for x: int in range(clipped.position.x, clipped.end.x):
+			var point := Vector3(float(x), 0.0, float(z))
+			terrain.data.set_control_base_id(point, texture_id)
+			terrain.data.set_control_overlay_id(point, texture_id)
+			terrain.data.set_control_blend(point, 0.0)
+			terrain.data.set_control_auto(point, false)
+			terrain.data.set_control_angle(point, _texture_rotation_for_cell(x, z, texture_id))
+			terrain.data.set_color(point, Color.WHITE)
+	terrain.data.update_maps(Terrain3DRegion.TYPE_CONTROL, true, false)
+	terrain.data.update_maps(Terrain3DRegion.TYPE_COLOR, true, false)
+
+
+func _texture_rotation_for_cell(x: int, z: int, texture_id: int) -> float:
+	var tile_x := floori(float(x) / 8.0)
+	var tile_z := floori(float(z) / 8.0)
+	var hash_value: int = absi(tile_x * 73856093 ^ tile_z * 19349663 ^ texture_id * 83492791)
+	return float(hash_value % 4) * 90.0
+
 
 func get_height(world_x: float, world_z: float) -> float:
 	if terrain == null or terrain.data == null:
@@ -178,6 +230,13 @@ func get_intersection(ray_origin: Vector3, ray_direction: Vector3) -> Vector3:
 		return Vector3(NAN, NAN, NAN)
 	return terrain.get_intersection(ray_origin, ray_direction, false)
 
+
+func get_surface_normal(world_x: float, world_z: float) -> Vector3:
+	var step := 0.5
+	var dx := get_height(world_x + step, world_z) - get_height(world_x - step, world_z)
+	var dz := get_height(world_x, world_z + step) - get_height(world_x, world_z - step)
+	return Vector3(-dx, step * 2.0, -dz).normalized()
+
 func clear_height() -> void:
 	if terrain == null:
 		return
@@ -189,8 +248,8 @@ func clear_height() -> void:
 func reset_blank() -> void:
 	if terrain == null or _region == null:
 		return
-	for z: int in range(MAP_SIZE.y):
-		for x: int in range(MAP_SIZE.x):
+	for z: int in range(_editable_map_size.y):
+		for x: int in range(_editable_map_size.x):
 			var point := Vector3(float(x), 0.0, float(z))
 			terrain.data.set_height(point, 0.0)
 			terrain.data.set_control_base_id(point, BLANK_TEXTURE_ID)
@@ -198,7 +257,8 @@ func reset_blank() -> void:
 			terrain.data.set_control_blend(point, 0.0)
 			terrain.data.set_control_auto(point, false)
 			terrain.data.set_color(point, Color.WHITE)
-	_region.calc_height_range()
+	for region: Terrain3DRegion in _regions:
+		region.calc_height_range()
 	terrain.data.update_maps(Terrain3DRegion.TYPE_MAX, true, false)
 
 func capture_state() -> Dictionary:
@@ -227,6 +287,23 @@ func restore_state(state: Dictionary) -> void:
 	terrain.data.update_maps(Terrain3DRegion.TYPE_MAX, true, false)
 
 
+func load_from_directory(directory: String, multiplier: int) -> bool:
+	if terrain == null or directory.is_empty():
+		return false
+	var absolute_directory := ProjectSettings.globalize_path(directory)
+	if not DirAccess.dir_exists_absolute(absolute_directory):
+		return false
+	for location: Vector2i in terrain.data.get_region_locations():
+		terrain.data.remove_regionl(location, false)
+	terrain.data.load_directory(directory)
+	set_map_size_multiplier(multiplier)
+	for region: Terrain3DRegion in _regions:
+		region.calc_height_range()
+	terrain.data.update_maps(Terrain3DRegion.TYPE_MAX, true, false)
+	_data_directory = directory
+	return true
+
+
 func save_to_directory(directory: String) -> void:
 	if terrain == null:
 		return
@@ -238,8 +315,8 @@ func get_data_directory() -> String:
 	return _data_directory
 
 func _initialize_base_height() -> void:
-	for z: int in range(MAP_SIZE.y):
-		for x: int in range(MAP_SIZE.x):
+	for z: int in range(terrain.region_size):
+		for x: int in range(terrain.region_size):
 			var point := Vector3(float(x), 0.0, float(z))
 			terrain.data.set_height(point, 0.0)
 			terrain.data.set_control_base_id(point, BLANK_TEXTURE_ID)
@@ -276,7 +353,7 @@ func _neighbor_average(x: int, z: int) -> float:
 	var count: int = 1
 	for offset: Vector2i in [Vector2i.LEFT, Vector2i.RIGHT, Vector2i.UP, Vector2i.DOWN]:
 		var neighbor := Vector2i(x, z) + offset
-		if neighbor.x < 0 or neighbor.y < 0 or neighbor.x >= MAP_SIZE.x or neighbor.y >= MAP_SIZE.y:
+		if neighbor.x < 0 or neighbor.y < 0 or neighbor.x >= _editable_map_size.x or neighbor.y >= _editable_map_size.y:
 			continue
 		total += get_height(float(neighbor.x), float(neighbor.y))
 		count += 1
@@ -402,6 +479,7 @@ func _configure_material() -> void:
 	terrain.assets.update_texture_list()
 	# `show_colormap` is a white diagnostic view, not the regular color multiplier.
 	terrain.material.show_colormap = false
+	terrain.material.dual_scaling = false
 	terrain.material.update()
 	terrain.show_grey = false
 	terrain.material.world_background = Terrain3DMaterial.NONE
