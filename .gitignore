@@ -10,3 +10,11 @@
 *.log
 .DS_Store
 Thumbs.db
+
+# Local-only: MCP config and Meshy import staging
+.mcp.json
+/imported_models/
+
+# Scratch / experimental scenes
+/node_3d.tscn
+/scenes/meshy_character_test.tscn

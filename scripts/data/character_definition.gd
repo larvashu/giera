@@ -18,6 +18,10 @@ extends Resource
 @export var run_animation_scene: PackedScene
 @export var attack_animation_scene: PackedScene
 @export var hurt_animation_scene: PackedScene
+@export var death_animation_scene: PackedScene
+## Optional character-specific animations (e.g. "hypnosis", "fireball").
+## Keys are StringName animation names, values are PackedScene GLB sources.
+@export var special_animations: Dictionary = {}
 @export var visual_color: Color = Color.WHITE
 @export_range(0.5, 2.5, 0.1) var visual_scale: float = 1.0
 @export var visual_offset: Vector3 = Vector3.ZERO

@@ -22,7 +22,8 @@ const DEFAULT_ABILITIES: Dictionary = {
 	&"dragon": ["Smoczy oddech", "Lot", "Ogon"],
 	&"undead_priest": ["Dotyk zarazy", "Nekrotyczne leczenie", "Klatwa grobu"],
 	&"falconer": ["Sokoli zwiad", "Pikowanie", "Oznaczenie celu"],
-	&"bandit": ["Brudny cios", "Rzut nozem", "Zasadzka"]
+	&"bandit": ["Brudny cios", "Rzut nozem", "Zasadzka"],
+	&"hipogryfin": ["Szpon hipogryfa", "Nurkowanie", "Podmuch skrzydel"]
 }
 
 @export var faction: Faction = Faction.PLAYER

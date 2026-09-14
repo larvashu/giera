@@ -15,6 +15,13 @@ func setup(model: Node3D, definition: CharacterDefinition) -> void:
 	_import_clip(&"run", definition.run_animation_scene, true)
 	_import_clip(&"attack", definition.attack_animation_scene, false)
 	_import_clip(&"hurt", definition.hurt_animation_scene, false)
+	_import_clip(&"death", definition.death_animation_scene, false)
+	for anim_name: StringName in definition.special_animations:
+		var source_scene: PackedScene = definition.special_animations[anim_name]
+		_import_clip(anim_name, source_scene, false)
+	# Fallback: if no idle, use walk
+	if not _clips.has(&"idle") and _clips.has(&"walk"):
+		_clips[&"idle"] = _clips[&"walk"]
 	play_idle()
 
 
@@ -23,28 +30,55 @@ func play_idle() -> void:
 
 
 func play_walk(speed_scale: float = 1.0) -> void:
-	_play(&"walk", speed_scale)
+	if _player != null and _clips.has(&"walk"):
+		_player.play(_clips[&"walk"], 0.1, speed_scale)
+	else:
+		play_idle()
 
 
 func play_run() -> void:
-	_play(&"run")
+	if _player != null and _clips.has(&"run"):
+		_player.play(_clips[&"run"], 0.1)
+	elif _clips.has(&"walk"):
+		play_walk()
+	else:
+		play_idle()
 
 
 func play_attack() -> void:
 	if _player == null or not _clips.has(&"attack"):
 		return
 	_player.play(_clips[&"attack"], 0.12)
-	_player.animation_finished.connect(_on_attack_finished, CONNECT_ONE_SHOT)
+	_player.animation_finished.connect(_on_oneshot_finished, CONNECT_ONE_SHOT)
 
 
 func play_hurt() -> void:
 	if _player == null or not _clips.has(&"hurt"):
 		return
 	_player.play(_clips[&"hurt"], 0.08)
-	_player.animation_finished.connect(_on_attack_finished, CONNECT_ONE_SHOT)
+	_player.animation_finished.connect(_on_oneshot_finished, CONNECT_ONE_SHOT)
 
 
-func _on_attack_finished(_animation_name: StringName) -> void:
+func play_death() -> void:
+	if _player == null:
+		return
+	if _clips.has(&"death"):
+		_player.play(_clips[&"death"], 0.1)
+	else:
+		# No death animation — freeze on last frame of hurt, or just stop
+		_player.stop()
+
+
+func play_animation(anim_name: StringName) -> void:
+	if _player == null:
+		return
+	if _clips.has(anim_name):
+		_player.play(_clips[anim_name], 0.1)
+	else:
+		push_warning("CharacterAnimationController: unknown animation '%s'" % anim_name)
+
+
+func _on_oneshot_finished(_animation_name: StringName) -> void:
 	play_idle()
 
 
@@ -73,7 +107,7 @@ func _import_clip(kind: StringName, source_scene: PackedScene, loop: bool) -> vo
 			if library == null:
 				library = AnimationLibrary.new()
 				_player.add_animation_library(&"", library)
-			var clip_name := StringName("character_%s" % kind)
+			var clip_name := StringName(kind)
 			if library.has_animation(clip_name):
 				library.remove_animation(clip_name)
 			library.add_animation(clip_name, animation)

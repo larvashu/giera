@@ -223,7 +223,8 @@ func _skill_icon(atlas_index: int) -> AtlasTexture:
 	icon.atlas = texture
 	if texture == null:
 		return icon
-	var cell_size := Vector2(texture.get_width(), texture.get_height()) / float(AbilityCatalog.ICON_GRID_SIZE)
+	var icon_size := texture.get_width() / float(AbilityCatalog.ICON_GRID_SIZE)
+	var cell_size := Vector2(icon_size, icon_size)
 	var column := atlas_index % AbilityCatalog.ICON_GRID_SIZE
 	var row := floori(float(atlas_index) / float(AbilityCatalog.ICON_GRID_SIZE))
 	icon.region = Rect2(Vector2(float(column), float(row)) * cell_size, cell_size)

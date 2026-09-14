@@ -10,7 +10,8 @@ const ICON_ORDER: Array[String] = [
 	"Maczuga", "Kamienna skora", "Kamienny cios", "Forteca", "Wstrzas", "Smoczy oddech", "Lot",
 	"Ogon", "Dotyk zarazy", "Nekrotyczne leczenie", "Klatwa grobu", "Sokoli zwiad", "Pikowanie", "Oznaczenie celu",
 	"Brudny cios", "Rzut nozem", "Zasadzka", "Adaptacja", "Widzenie w mroku", "Kamienna odpornosc", "Zew krwi",
-	"Szczesciarz", "Majsterkowicz", "Odpornosc na ogien", "Zwinna ucieczka", "Nieczula natura"
+	"Szczesciarz", "Majsterkowicz", "Odpornosc na ogien", "Zwinna ucieczka", "Nieczula natura",
+	"Szpon hipogryfa", "Nurkowanie", "Podmuch skrzydel"
 ]
 
 const ABILITIES: Dictionary = {
@@ -60,7 +61,10 @@ const ABILITIES: Dictionary = {
 	"Majsterkowicz": {"cost": 2, "range": 0, "target": "self", "effect": "heal", "power": 4},
 	"Odpornosc na ogien": {"cost": 2, "range": 0, "target": "self", "effect": "status", "status": "guard", "power": 2, "duration": 3},
 	"Zwinna ucieczka": {"cost": 2, "range": 0, "target": "self", "effect": "status", "status": "haste", "power": 2, "duration": 2},
-	"Nieczula natura": {"cost": 2, "range": 0, "target": "self", "effect": "status", "status": "regeneration", "power": 2, "duration": 3}
+	"Nieczula natura": {"cost": 2, "range": 0, "target": "self", "effect": "status", "status": "regeneration", "power": 2, "duration": 3},
+	"Szpon hipogryfa": {"cost": 3, "range": 1, "target": "enemy", "effect": "damage", "power": 6},
+	"Nurkowanie": {"cost": 4, "range": 5, "target": "enemy", "effect": "damage_status", "power": 7, "status": "stunned", "duration": 1},
+	"Podmuch skrzydel": {"cost": 3, "range": 2, "target": "enemy", "effect": "area_damage_status", "power": 3, "status": "slowed", "duration": 2, "radius": 2}
 }
 
 static func get_ability(ability_name: String) -> Dictionary:
@@ -92,4 +96,4 @@ static func describe(ability_name: String) -> String:
 
 static func icon_index(ability_name: String) -> int:
 	var index := ICON_ORDER.find(ability_name)
-	return index if index >= 0 else 47
+	return index if index >= 0 else 50
