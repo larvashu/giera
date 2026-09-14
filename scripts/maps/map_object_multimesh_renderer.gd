@@ -46,6 +46,23 @@ const MESH_FILTERS: Dictionary[String, String] = {
 	"bush_real_9": "tall_bush_4",
 	"premium_tree_1": "Forest_Tree_Bark_LOD0",
 	"premium_tree_2": "Forest_Tree_Bark_LOD0",
+	"premium_tree_3": "Forest_Tree_Bark_LOD0",
+	"premium_tree_4": "Forest_Tree_Bark_LOD0",
+	"premium_tree_5": "Forest_Tree_Bark_LOD0",
+	"premium_tree_6": "Forest_Tree_Bark_LOD0",
+	"premium_tree_7": "Forest_Tree_Bark_LOD0",
+	"premium_tree_8": "Forest_Tree_Bark_LOD0",
+	"premium_tree_9": "Forest_Tree_Bark_LOD0",
+	"premium_tree_10": "Forest_Tree_Bark_LOD0",
+	"premium_tree_11": "Forest_Tree_Bark_LOD0",
+	"premium_tree_12": "Forest_Tree_Bark_LOD0",
+	"premium_tree_13": "Forest_Tree_Bark_LOD0",
+	"premium_tree_14": "Forest_Tree_Bark_LOD0",
+	"premium_tree_15": "Forest_Tree_Bark_LOD0",
+	"premium_tree_16": "Forest_Tree_Bark_LOD0",
+	"premium_tree_17": "Forest_Tree_Bark_LOD0",
+	"premium_tree_18": "Forest_Tree_Bark_LOD0",
+	"premium_tree_19": "Forest_Tree_Bark_LOD0",
 }
 
 var _assets: Dictionary[String, String] = {}
@@ -103,6 +120,7 @@ func _build_group(key: String, entries: Array) -> void:
 			continue
 		var multimesh := MultiMesh.new()
 		multimesh.transform_format = MultiMesh.TRANSFORM_3D
+		multimesh.use_colors = true
 		multimesh.mesh = source_mesh
 		multimesh.instance_count = entries.size()
 		for entry_index: int in range(entries.size()):
@@ -111,6 +129,8 @@ func _build_group(key: String, entries: Array) -> void:
 			var data: Dictionary = entry["data"]
 			var object_transform := _object_transform(data)
 			multimesh.set_instance_transform(entry_index, object_transform * (part["transform"] as Transform3D))
+			var tint := Color.from_string(str(data.get("color", "ffffff")), Color.WHITE)
+			multimesh.set_instance_color(entry_index, tint)
 			_instance_positions[object_index] = object_transform.origin
 		var instance := MultiMeshInstance3D.new()
 		instance.name = "%s_Part%d" % [key.replace("|", "_"), part_index]
@@ -167,6 +187,7 @@ func _apply_premium_tree_materials(source: Mesh) -> Mesh:
 	leaves.cull_mode = BaseMaterial3D.CULL_DISABLED
 	leaves.roughness = 0.82
 	leaves.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	leaves.vertex_color_use_as_albedo = true
 	if mesh.get_surface_count() > 0:
 		mesh.surface_set_material(0, bark)
 	if mesh.get_surface_count() > 1:
@@ -231,9 +252,12 @@ func _object_transform(data: Dictionary) -> Transform3D:
 	var kind := str(data.get("type", ""))
 	var resolved_position := _resolved_base_position(data)
 	var scale_value := _effective_scale(data)
+	var height_scale := clampf(float(data.get("height_scale", 1.0)), 0.25, 3.0)
 	var flip_sign := -1.0 if bool(data.get("flipped", false)) else 1.0
-	var object_basis := Basis.from_euler(Vector3(0.0, deg_to_rad(float(data.get("rotation", 0.0))), 0.0))
-	object_basis = object_basis.scaled(Vector3(scale_value * flip_sign, scale_value, scale_value))
+	var surface_normal := Vector3(float(data.get("normal_x", 0.0)), float(data.get("normal_y", 1.0)), float(data.get("normal_z", 0.0))).normalized()
+	var object_basis := Basis(Quaternion(Vector3.UP, surface_normal))
+	object_basis = object_basis.rotated(surface_normal, deg_to_rad(float(data.get("rotation", 0.0))))
+	object_basis = object_basis.scaled(Vector3(scale_value * flip_sign, scale_value * height_scale, scale_value))
 	return Transform3D(object_basis, resolved_position)
 
 func _build_collisions(key: String, entries: Array) -> void:
@@ -242,10 +266,11 @@ func _build_collisions(key: String, entries: Array) -> void:
 	for entry: Dictionary in entries:
 		var data: Dictionary = entry["data"]
 		var scale_value := _effective_scale(data)
+		var height_scale := clampf(float(data.get("height_scale", 1.0)), 0.25, 3.0)
 		var collision := CollisionShape3D.new()
 		var shape := CylinderShape3D.new()
 		shape.radius = minf(0.19 * scale_value, 1.65)
-		shape.height = 1.6 * scale_value
+		shape.height = 1.6 * scale_value * height_scale
 		collision.shape = shape
 		collision.position = _resolved_base_position(data) + Vector3.UP * shape.height * 0.5
 		body.add_child(collision)
