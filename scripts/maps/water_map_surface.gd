@@ -2,9 +2,15 @@ class_name WaterMapSurface
 extends Node3D
 
 const MAP_SIZE := Vector2i(160, 190)
-const ARENA_WATER_SHADER: Shader = preload("res://assets/education_realistic_scene/water/ads.gdshader")
-const ARENA_WATER_FOAM: Texture2D = preload("res://assets/education_realistic_scene/water/foam.jpg")
-const ARENA_WATER_NORMAL: Texture2D = preload("res://assets/education_realistic_scene/water/water_normal.jpg")
+## These arena-water assets are missing from the repo (never committed after
+## commit 767ad5b introduced the references) — preload() would hard-fail
+## compilation of this whole script and everything depending on it
+## (GridManager, Battle, MapEditor). Load defensively with a fallback so a
+## missing-asset issue stays a visual downgrade, not a project-wide crash.
+const ARENA_WATER_SHADER_PATH := "res://assets/education_realistic_scene/water/ads.gdshader"
+const ARENA_WATER_FOAM_PATH := "res://assets/education_realistic_scene/water/foam.jpg"
+const ARENA_WATER_NORMAL_PATH := "res://assets/education_realistic_scene/water/water_normal.jpg"
+const FALLBACK_WATER_SHADER: Shader = preload("res://world/terrain/shaders/solo_trail_water.gdshader")
 
 var _cells: Dictionary[Vector2i, float] = {}
 var _mesh_instance: MeshInstance3D
@@ -131,7 +137,11 @@ func _resolve_brush_level(center: Vector3, radius: float) -> float:
 
 func _create_water_material() -> ShaderMaterial:
 	var material := ShaderMaterial.new()
-	material.shader = ARENA_WATER_SHADER
+	if ResourceLoader.exists(ARENA_WATER_SHADER_PATH):
+		material.shader = load(ARENA_WATER_SHADER_PATH)
+	else:
+		push_warning("WaterMapSurface: %s missing, using fallback shader" % ARENA_WATER_SHADER_PATH)
+		material.shader = FALLBACK_WATER_SHADER
 	# Te same parametry co w Arena (test): refrakcja, animowane normalne i piana brzegowa.
 	material.set_shader_parameter("surface_color", Color(0.619608, 0.839216, 0.858824))
 	material.set_shader_parameter("depth_color", Color(0.223529, 0.780392, 0.831373))
@@ -143,6 +153,8 @@ func _create_water_material() -> ShaderMaterial:
 	material.set_shader_parameter("_uv_scale", 0.256)
 	material.set_shader_parameter("_foam_strength", 0.519)
 	material.set_shader_parameter("_foam_size", 0.2)
-	material.set_shader_parameter("_foam", ARENA_WATER_FOAM)
-	material.set_shader_parameter("normal_map", ARENA_WATER_NORMAL)
+	if ResourceLoader.exists(ARENA_WATER_FOAM_PATH):
+		material.set_shader_parameter("_foam", load(ARENA_WATER_FOAM_PATH))
+	if ResourceLoader.exists(ARENA_WATER_NORMAL_PATH):
+		material.set_shader_parameter("normal_map", load(ARENA_WATER_NORMAL_PATH))
 	return material
