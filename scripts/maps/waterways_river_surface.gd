@@ -52,6 +52,9 @@ func _create_river(data: Dictionary) -> void:
 			var next_data: Dictionary = raw_points[index + 1]
 			following = Vector3(float(next_data.get("x", 0.0)), float(next_data.get("y", 0.0)), float(next_data.get("z", 0.0)))
 		var tangent := (following - previous) * 0.22
+		# Horizontal handles keep the meander smooth without making the cubic
+		# spline overshoot vertically and briefly send the current uphill.
+		tangent.y = 0.0
 		curve.add_point(point, -tangent, tangent)
 		widths.append(maxf(1.0, float(point_data.get("width", 8.0))))
 	river.set("curve", curve)
