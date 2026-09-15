@@ -6,6 +6,8 @@ const ARENA_TEST_RECT := Rect2i(25, 6, 110, 178)
 const ARENA_TEST_LANDSCAPE := preload("res://scripts/maps/arena_test_landscape.gd")
 const GRASS_LAYER_SCRIPT := preload("res://scripts/maps/map_grass_layer.gd")
 const UNDO_LIMIT := 5
+const MAX_BRUSH_RADIUS := 180.0
+const WATER_RISE_PER_SECOND := 2.0
 const CLOUD_SKY_SHADER: Shader = preload("res://scripts/maps/editor_clouds.gdshader")
 const ASSETS: Dictionary[String, String] = {
 	"purple_tree_1": "res://assets/models/environment/purple_tree_01.glb",
@@ -134,6 +136,8 @@ var grass_height := 1.0
 var grass_color := Color(0.42, 0.72, 0.22)
 var premium_tree_color := Color.WHITE
 var water_level := 0.0
+var _water_stroke_started_msec := -1
+var _water_stroke_start_level := 0.0
 var _grass_stroke_id := 0
 var _active_grass_stroke_id := 0
 var _grass_preview: TextureRect
@@ -197,6 +201,7 @@ var _bottom_panel: PanelContainer
 var _load_map_dialog: ConfirmationDialog
 var _saved_map_list: ItemList
 var _saved_map_ids: Array[String] = []
+var _asset_preview_cache: Dictionary[String, Texture2D] = {}
 
 func _ready() -> void:
 	_build_sidebar_controls()
@@ -243,8 +248,9 @@ func _build_sidebar_controls() -> void:
 	_brush_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_brush_radius_slider = HSlider.new()
 	_brush_radius_slider.min_value = 1.5
-	_brush_radius_slider.max_value = 18.0
-	_brush_radius_slider.step = 0.5
+	_brush_radius_slider.max_value = MAX_BRUSH_RADIUS
+	_brush_radius_slider.step = 1.0
+	_brush_radius_slider.tooltip_text = "Promień pędzla do 180 m — 10× większy niż wcześniej"
 	_brush_radius_slider.value = brush_radius
 	_brush_strength_slider = HSlider.new()
 	_brush_strength_slider.min_value = 0.1
@@ -253,11 +259,11 @@ func _build_sidebar_controls() -> void:
 	_brush_strength_slider.tooltip_text = "Siła zmiany wysokości — większe wartości szybko budują wysokie góry"
 	_brush_strength_slider.value = brush_strength
 	_density_slider = HSlider.new()
-	_density_slider.min_value = 0.001
-	_density_slider.max_value = 0.65
-	_density_slider.step = 0.005
+	_density_slider.min_value = 0.0
+	_density_slider.max_value = 1.0
+	_density_slider.step = 0.01
 	_density_slider.value = object_density
-	_density_slider.tooltip_text = "Gęstość obiektów na metr kwadratowy"
+	_density_slider.tooltip_text = "Gęstość wypełnienia pędzla: niska = kilka assetów nawet na dużym obszarze"
 
 	_update_brush_label()
 
@@ -326,9 +332,11 @@ func _build_bottom_toolbar() -> void:
 	_grass_width_slider = _make_bottom_slider(sliders_row, "Szerokość", 0.25, 3.0, grass_width)
 	_grass_height_slider = _make_bottom_slider(sliders_row, "Wysokość trawy", 0.25, 4.0, grass_height)
 	_object_height_slider = _make_bottom_slider(sliders_row, "Wysokość assetu", 0.25, 3.0, object_height_scale)
-	_object_scale_randomness_slider = _make_bottom_slider(sliders_row, "Losowość skali", 0.0, 0.75, object_scale_randomness)
+	_object_scale_randomness_slider = _make_bottom_slider(sliders_row, "Losowość skali", 0.0, 1.0, object_scale_randomness)
+	_object_scale_randomness_slider.tooltip_text = "Losowość rozmiaru nowych assetów: 0 = identyczne, 1 = od 0.33× do 3×"
 	_object_rotation_randomness_slider = _make_bottom_slider(sliders_row, "Losowość obrotu", 0.0, 1.0, object_rotation_randomness)
-	_water_level_slider = _make_bottom_slider(sliders_row, "Poziom wody", -12.0, 18.0, water_level)
+	_water_level_slider = _make_bottom_slider(sliders_row, "Poziom startowy wody", TerrainMapSurface.MIN_HEIGHT, TerrainMapSurface.MAX_HEIGHT, water_level)
+	_water_level_slider.tooltip_text = "Poziom początkowy; przytrzymanie LPM podnosi wodę o 2 m/s"
 	_build_premium_tree_color_control(sliders_row)
 	_build_grass_color_control(sliders_row)
 	_update_brush_controls_for_tool()
@@ -486,11 +494,15 @@ func _add_material_section(parent: VBoxContainer) -> void:
 		grid.add_child(button)
 
 func _create_asset_preview(scene_path: String) -> Texture2D:
+	if _asset_preview_cache.has(scene_path):
+		return _asset_preview_cache[scene_path]
 	var preview := SubViewport.new()
-	preview.size = Vector2i(96, 72)
-	preview.transparent_bg = true
+	preview.size = Vector2i(128, 96)
+	preview.transparent_bg = false
 	preview.own_world_3d = true
-	preview.render_target_update_mode = SubViewport.UPDATE_ONCE
+	# UPDATE_ONCE often rendered before imported model textures were ready,
+	# leaving a blank or untextured icon. Render a few complete frames first.
+	preview.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(preview)
 	var resource := load(scene_path)
 	var model: Node3D
@@ -501,29 +513,49 @@ func _create_asset_preview(scene_path: String) -> Texture2D:
 		mesh_instance.mesh = resource as Mesh
 		model = mesh_instance
 	if model == null:
-		return preview.get_texture()
+		var empty_texture := preview.get_texture()
+		_asset_preview_cache[scene_path] = empty_texture
+		return empty_texture
 	preview.add_child(model)
 	var bounds := _node_bounds(model)
 	model.position -= bounds.get_center()
-	var extent := maxf(maxf(bounds.size.x, bounds.size.y), bounds.size.z)
+	var extent := maxf(0.1, maxf(maxf(bounds.size.x, bounds.size.y), bounds.size.z))
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.size = maxf(1.5, extent * 1.35)
 	preview.add_child(camera)
 	camera.look_at_from_position(Vector3(extent * 1.15, extent * 0.7, extent * 1.65), Vector3.ZERO)
 	camera.current = true
-	var light := DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-45.0, -35.0, 0.0)
-	light.light_energy = 1.4
-	preview.add_child(light)
+	var key_light := DirectionalLight3D.new()
+	key_light.rotation_degrees = Vector3(-45.0, -35.0, 0.0)
+	key_light.light_energy = 1.55
+	key_light.shadow_enabled = true
+	preview.add_child(key_light)
+	var fill_light := DirectionalLight3D.new()
+	fill_light.rotation_degrees = Vector3(35.0, 145.0, 0.0)
+	fill_light.light_energy = 0.65
+	preview.add_child(fill_light)
 	var world_environment := WorldEnvironment.new()
 	var environment := Environment.new()
+	environment.background_mode = Environment.BG_COLOR
+	environment.background_color = Color(0.055, 0.075, 0.09)
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color.WHITE
-	environment.ambient_light_energy = 0.75
+	environment.ambient_light_energy = 0.85
 	world_environment.environment = environment
 	preview.add_child(world_environment)
-	return preview.get_texture()
+	var texture := preview.get_texture()
+	_asset_preview_cache[scene_path] = texture
+	_finish_asset_preview.call_deferred(preview)
+	return texture
+
+
+func _finish_asset_preview(preview: SubViewport) -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if is_instance_valid(preview):
+		preview.render_target_update_mode = SubViewport.UPDATE_DISABLED
 
 func _node_bounds(root: Node3D) -> AABB:
 	var result := AABB(Vector3.ZERO, Vector3.ONE)
@@ -1003,7 +1035,12 @@ func _process(delta: float) -> void:
 		if active_tool == "simple_grass":
 			_grass_stroke_id += 1
 			_active_grass_stroke_id = _grass_stroke_id
+		elif active_tool == "water_add":
+			_begin_water_stroke()
 	elif not wants_fpp_paint and _fpp_painting:
+		if active_tool == "water_add":
+			_try_apply_at_screen(fpp_center, true)
+			_end_water_stroke()
 		_fpp_painting = false
 		if _object_rebuild_pending:
 			_flush_object_rebuild()
@@ -1162,10 +1199,16 @@ func _on_viewport_input(event: InputEvent) -> void:
 					if active_tool == "simple_grass":
 						_grass_stroke_id += 1
 						_active_grass_stroke_id = _grass_stroke_id
+					elif active_tool == "water_add":
+						_begin_water_stroke()
 					_last_object_stamp = Vector3(INF, INF, INF)
 					_try_apply_at_screen(button.position)
-				elif _object_rebuild_pending:
-					_flush_object_rebuild()
+				else:
+					if active_tool == "water_add":
+						_try_apply_at_screen(button.position, true)
+						_end_water_stroke()
+					if _object_rebuild_pending:
+						_flush_object_rebuild()
 
 func _fill_selected_texture_area(screen_start: Vector2, screen_end: Vector2) -> void:
 	var start_hit: Variant = _screen_to_map(screen_start)
@@ -1187,9 +1230,31 @@ func _fill_selected_texture_area(screen_start: Vector2, screen_end: Vector2) -> 
 	])
 
 
-func _try_apply_at_screen(screen_position: Vector2) -> void:
+func _begin_water_stroke() -> void:
+	_water_stroke_started_msec = Time.get_ticks_msec()
+	_water_stroke_start_level = water_level
+
+
+func _current_water_brush_level() -> float:
+	if _water_stroke_started_msec < 0:
+		return water_level
+	var elapsed_seconds := float(Time.get_ticks_msec() - _water_stroke_started_msec) / 1000.0
+	return clampf(_water_stroke_start_level + elapsed_seconds * WATER_RISE_PER_SECOND, TerrainMapSurface.MIN_HEIGHT, TerrainMapSurface.MAX_HEIGHT)
+
+
+func _end_water_stroke() -> void:
+	if _water_stroke_started_msec < 0:
+		return
+	water_level = _current_water_brush_level()
+	_water_stroke_started_msec = -1
+	if _water_level_slider != null:
+		_water_level_slider.set_value_no_signal(water_level)
+	_update_brush_label()
+
+
+func _try_apply_at_screen(screen_position: Vector2, force: bool = false) -> void:
 	var now_msec := Time.get_ticks_msec()
-	if now_msec - _last_action_msec < 75:
+	if not force and now_msec - _last_action_msec < 75:
 		return
 	var hit: Variant = _screen_to_map(screen_position)
 	if hit == null:
@@ -1243,7 +1308,8 @@ func _apply_tool(world_position: Vector3) -> void:
 	elif active_tool.begins_with("paint_"):
 		_terrain_surface.paint_texture(world_position, brush_radius, brush_strength, int(active_tool.trim_prefix("paint_")))
 	elif active_tool == "water_add" or active_tool == "water_remove":
-		_water_surface.apply_brush(world_position, brush_radius, active_tool == "water_remove", water_level)
+		var active_water_level := _current_water_brush_level() if active_tool == "water_add" else water_level
+		_water_surface.apply_brush(world_position, brush_radius, active_tool == "water_remove", active_water_level)
 	elif active_tool == "simple_grass":
 		_paint_simple_grass(world_position)
 	elif active_tool == "select":
@@ -1278,11 +1344,15 @@ func _scatter_objects(center: Vector3) -> void:
 	if not ASSETS.has(active_tool):
 		return
 	var obstacle := active_tool.begins_with("purple_tree_") or active_tool.begins_with("tree_real_") or active_tool.begins_with("premium_tree_") or active_tool == "large_tree"
-	var effective_density := object_density
+	var effective_density := clampf(object_density, 0.0, 1.0)
 	var maximum := 120 if obstacle else 240
-	var requested := clampi(roundi(PI * brush_radius * brush_radius * effective_density), 1, maximum)
+	# Density is a normalized fill control, not objects-per-square-metre.
+	# A huge brush at low density must still scatter only a handful of assets.
+	var brush_capacity := clampi(roundi(PI * brush_radius * brush_radius / 64.0), 1, maximum)
+	var density_curve := pow(effective_density, 1.6)
+	var requested := clampi(roundi(lerpf(1.0, float(brush_capacity), density_curve)), 1, maximum)
 	var added := 0
-	for index: int in range(requested * 3):
+	for index: int in range(maxi(requested * 8, 24)):
 		if added >= requested:
 			break
 		var angle := randf() * TAU
@@ -1295,7 +1365,10 @@ func _scatter_objects(center: Vector3) -> void:
 		var minimum_distance := clampf(density_spacing, 0.55 if obstacle else 0.22, 12.0 if obstacle else 4.0)
 		if _has_nearby_object(active_tool, Vector2(x, z), minimum_distance):
 			continue
-		var randomized_scale := randf_range(1.0 - object_scale_randomness, 1.0 + object_scale_randomness)
+		# Reciprocal bounds avoid biasing random sizes toward tiny objects:
+		# randomness 1.0 produces a visible, balanced range from 0.33× to 3×.
+		var scale_spread := 1.0 + object_scale_randomness * 2.0
+		var randomized_scale := exp(randf_range(-log(scale_spread), log(scale_spread)))
 		var randomized_rotation := randf_range(-180.0, 180.0) * object_rotation_randomness
 		var surface_normal := _terrain_surface.get_surface_normal(x, z)
 		objects.append({
