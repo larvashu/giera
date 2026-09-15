@@ -226,21 +226,10 @@ func _rebuild_chunk(chunk: Vector2i) -> void:
 	var end_x := mini(start_x + CHUNK_SIZE, _editable_map_size.x)
 	var end_z := mini(start_z + CHUNK_SIZE, _editable_map_size.y)
 	for z: int in range(start_z, end_z):
-		var x := start_x
-		while x < end_x:
+		for x: int in range(start_x, end_x):
 			var cell := Vector2i(x, z)
-			if not _cells.has(cell):
-				x += 1
-				continue
-			var level := float(_cells[cell])
-			var run_end := x
-			while run_end + 1 < end_x:
-				var next_cell := Vector2i(run_end + 1, z)
-				if not _cells.has(next_cell) or not is_equal_approx(float(_cells[next_cell]), level):
-					break
-				run_end += 1
-			_append_water_quad(vertices, normals, uvs, indices, x, run_end, z, level)
-			x = run_end + 1
+			if _cells.has(cell):
+				_append_smooth_water_cell(vertices, normals, uvs, indices, cell)
 	if vertices.is_empty():
 		if _chunk_instances.has(chunk):
 			_chunk_instances[chunk].queue_free()
@@ -267,17 +256,27 @@ func _rebuild_chunk(chunk: Vector2i) -> void:
 	instance.mesh = mesh
 
 
-func _append_water_quad(vertices: PackedVector3Array, normals: PackedVector3Array, uvs: PackedVector2Array, indices: PackedInt32Array, from_x: int, to_x: int, z: int, level: float) -> void:
+func _append_smooth_water_cell(vertices: PackedVector3Array, normals: PackedVector3Array, uvs: PackedVector2Array, indices: PackedInt32Array, cell: Vector2i) -> void:
 	var vertex_start := vertices.size()
-	var x0 := float(from_x) - 0.5
-	var x1 := float(to_x) + 0.5
-	var z0 := float(z) - 0.5
-	var z1 := float(z) + 0.5
-	vertices.append_array(PackedVector3Array([
-		Vector3(x0, level, z0), Vector3(x1, level, z0),
-		Vector3(x1, level, z1), Vector3(x0, level, z1),
-	]))
-	normals.append_array(PackedVector3Array([Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP]))
+	var x0 := float(cell.x) - 0.5
+	var x1 := float(cell.x) + 0.5
+	var z0 := float(cell.y) - 0.5
+	var z1 := float(cell.y) + 0.5
+	var y00 := _corner_water_level(cell, 0, 0)
+	var y10 := _corner_water_level(cell, 1, 0)
+	var y11 := _corner_water_level(cell, 1, 1)
+	var y01 := _corner_water_level(cell, 0, 1)
+	var p00 := Vector3(x0, y00, z0)
+	var p10 := Vector3(x1, y10, z0)
+	var p11 := Vector3(x1, y11, z1)
+	var p01 := Vector3(x0, y01, z1)
+	var normal_a := (p11 - p00).cross(p10 - p00).normalized()
+	var normal_b := (p01 - p00).cross(p11 - p00).normalized()
+	var smooth_normal := (normal_a + normal_b).normalized()
+	if smooth_normal.y < 0.0:
+		smooth_normal = -smooth_normal
+	vertices.append_array(PackedVector3Array([p00, p10, p11, p01]))
+	normals.append_array(PackedVector3Array([smooth_normal, smooth_normal, smooth_normal, smooth_normal]))
 	uvs.append_array(PackedVector2Array([
 		Vector2(x0, z0) * 0.08, Vector2(x1, z0) * 0.08,
 		Vector2(x1, z1) * 0.08, Vector2(x0, z1) * 0.08,
@@ -286,6 +285,18 @@ func _append_water_quad(vertices: PackedVector3Array, normals: PackedVector3Arra
 		vertex_start, vertex_start + 1, vertex_start + 2,
 		vertex_start, vertex_start + 2, vertex_start + 3,
 	]))
+
+
+func _corner_water_level(cell: Vector2i, positive_x: int, positive_z: int) -> float:
+	var total := 0.0
+	var count := 0
+	for offset_z: int in range(positive_z - 1, positive_z + 1):
+		for offset_x: int in range(positive_x - 1, positive_x + 1):
+			var neighbor := cell + Vector2i(offset_x, offset_z)
+			if _cells.has(neighbor):
+				total += float(_cells[neighbor])
+				count += 1
+	return total / float(maxi(1, count))
 
 
 func _cell_can_hold_water(cell: Vector2i, water_level: float) -> bool:
