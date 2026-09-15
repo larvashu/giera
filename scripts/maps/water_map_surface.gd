@@ -5,6 +5,8 @@ const MAP_SIZE := Vector2i(160, 190)
 const CHUNK_SIZE := 32
 const ROWS_PER_FRAME := 12
 const CHUNKS_PER_FRAME := 6
+const WATER_SURFACE_OFFSET := 0.12
+const LEVEL_JOIN_TOLERANCE := 0.35
 const ARENA_WATER_SHADER: Shader = preload("res://assets/education_realistic_scene/water/ads.gdshader")
 const ARENA_WATER_FOAM: Texture2D = preload("res://assets/education_realistic_scene/water/foam.jpg")
 const ARENA_WATER_NORMAL: Texture2D = preload("res://assets/education_realistic_scene/water/water_normal.jpg")
@@ -41,11 +43,13 @@ func _process(_delta: float) -> void:
 
 
 func queue_brush(center: Vector3, radius: float, erase: bool = false, level_override: float = NAN) -> void:
+	var requested_level: float = _resolve_brush_level(center, radius) if is_nan(level_override) else level_override
+	var water_level: float = requested_level if erase else _merge_level_with_touched_water(center, radius, requested_level)
 	var request := {
 		"center": center,
 		"radius": radius,
 		"erase": erase,
-		"level": _resolve_brush_level(center, radius) if is_nan(level_override) else level_override,
+		"level": water_level,
 	}
 	if _active_brush_job.is_empty():
 		_start_brush_job(request)
@@ -98,10 +102,11 @@ func _process_brush_rows() -> void:
 		for x: int in range(row_min_x, row_max_x + 1):
 			var cell := Vector2i(x, z)
 			if erase:
-				_cells.erase(cell)
-			else:
+				if _cells.erase(cell):
+					dirty_chunks[_chunk_for_cell(cell)] = true
+			elif _cell_can_hold_water(cell, water_level):
 				_cells[cell] = water_level
-			dirty_chunks[_chunk_for_cell(cell)] = true
+				dirty_chunks[_chunk_for_cell(cell)] = true
 		z += 1
 		rows_processed += 1
 	_active_brush_job["z"] = z
@@ -140,7 +145,8 @@ func load_cells(raw_cells: Array) -> void:
 	_rebuild_all_chunks()
 
 func apply_brush(center: Vector3, radius: float, erase: bool = false, level_override: float = NAN) -> void:
-	var water_level := _resolve_brush_level(center, radius) if is_nan(level_override) else level_override
+	var requested_level: float = _resolve_brush_level(center, radius) if is_nan(level_override) else level_override
+	var water_level: float = requested_level if erase else _merge_level_with_touched_water(center, radius, requested_level)
 	var min_x := maxi(0, floori(center.x - radius))
 	var max_x := mini(_editable_map_size.x - 1, ceili(center.x + radius))
 	var min_z := maxi(0, floori(center.z - radius))
@@ -155,10 +161,11 @@ func apply_brush(center: Vector3, radius: float, erase: bool = false, level_over
 		for x: int in range(row_min_x, row_max_x + 1):
 			var cell := Vector2i(x, z)
 			if erase:
-				_cells.erase(cell)
-			else:
+				if _cells.erase(cell):
+					dirty_chunks[_chunk_for_cell(cell)] = true
+			elif _cell_can_hold_water(cell, water_level):
 				_cells[cell] = water_level
-			dirty_chunks[_chunk_for_cell(cell)] = true
+				dirty_chunks[_chunk_for_cell(cell)] = true
 	_rebuild_chunks(dirty_chunks.keys())
 
 
@@ -279,6 +286,35 @@ func _append_water_quad(vertices: PackedVector3Array, normals: PackedVector3Arra
 		vertex_start, vertex_start + 1, vertex_start + 2,
 		vertex_start, vertex_start + 2, vertex_start + 3,
 	]))
+
+
+func _cell_can_hold_water(cell: Vector2i, water_level: float) -> bool:
+	if _cells.has(cell):
+		return true
+	if _terrain_surface == null:
+		return true
+	var ground_height: float = _terrain_surface.get_height(float(cell.x), float(cell.y))
+	return ground_height + WATER_SURFACE_OFFSET <= water_level
+
+
+func _merge_level_with_touched_water(center: Vector3, radius: float, requested_level: float) -> float:
+	var merged_level := requested_level
+	var min_x := maxi(0, floori(center.x - radius - 1.0))
+	var max_x := mini(_editable_map_size.x - 1, ceili(center.x + radius + 1.0))
+	var min_z := maxi(0, floori(center.z - radius - 1.0))
+	var max_z := mini(_editable_map_size.y - 1, ceili(center.z + radius + 1.0))
+	var search_radius_squared := (radius + 1.5) * (radius + 1.5)
+	for z: int in range(min_z, max_z + 1):
+		for x: int in range(min_x, max_x + 1):
+			var cell := Vector2i(x, z)
+			if not _cells.has(cell):
+				continue
+			if Vector2(float(x) - center.x, float(z) - center.z).length_squared() > search_radius_squared:
+				continue
+			var existing_level := float(_cells[cell])
+			if absf(existing_level - requested_level) <= LEVEL_JOIN_TOLERANCE or existing_level > requested_level:
+				merged_level = maxf(merged_level, existing_level)
+	return merged_level
 
 
 func _resolve_brush_level(center: Vector3, radius: float) -> float:
