@@ -8,6 +8,7 @@ const GRASS_LAYER_SCRIPT := preload("res://scripts/maps/map_grass_layer.gd")
 const UNDO_LIMIT := 5
 const MAX_BRUSH_RADIUS := 180.0
 const WATER_RISE_PER_SECOND := 2.0
+const OBJECT_SPATIAL_CELL_SIZE := 16.0
 const CLOUD_SKY_SHADER: Shader = preload("res://scripts/maps/editor_clouds.gdshader")
 const ASSETS: Dictionary[String, String] = {
 	"purple_tree_1": "res://assets/models/environment/purple_tree_01.glb",
@@ -153,6 +154,8 @@ var _object_renderer: MapObjectMultiMeshRenderer
 var _dragging_camera := false
 var _painting_objects := false
 var _object_rebuild_pending := false
+var _object_spatial_index: Dictionary[String, Array] = {}
+var _object_spatial_index_count := -1
 var _last_object_stamp := Vector3(INF, INF, INF)
 var _fpp_enabled := false
 var _fpp_painting := false
@@ -209,6 +212,7 @@ func _ready() -> void:
 	_build_bottom_toolbar()
 	_build_load_map_dialog()
 	await _terrain_surface.setup(_camera)
+	_terrain_surface.height_edit_finished.connect(_on_terrain_height_edit_finished)
 	_frame_map_camera()
 	_water_surface.setup(_terrain_surface)
 	_connect_ui()
@@ -1232,12 +1236,21 @@ func _fill_selected_texture_area(screen_start: Vector2, screen_end: Vector2) -> 
 
 func _begin_water_stroke() -> void:
 	_water_stroke_started_msec = Time.get_ticks_msec()
-	_water_stroke_start_level = water_level
+	# The first terrain hit anchors water to the local ground. This prevents a
+	# stale global slider value from creating a floating sheet.
+	_water_stroke_start_level = NAN
 
 
-func _current_water_brush_level() -> float:
+func _current_water_brush_level(surface_height: float = NAN) -> float:
 	if _water_stroke_started_msec < 0:
 		return water_level
+	if is_nan(_water_stroke_start_level):
+		if is_nan(surface_height):
+			return water_level
+		_water_stroke_start_level = surface_height + 0.12
+		water_level = _water_stroke_start_level
+		if _water_level_slider != null:
+			_water_level_slider.set_value_no_signal(water_level)
 	var elapsed_seconds := float(Time.get_ticks_msec() - _water_stroke_started_msec) / 1000.0
 	return clampf(_water_stroke_start_level + elapsed_seconds * WATER_RISE_PER_SECOND, TerrainMapSurface.MIN_HEIGHT, TerrainMapSurface.MAX_HEIGHT)
 
@@ -1245,8 +1258,10 @@ func _current_water_brush_level() -> float:
 func _end_water_stroke() -> void:
 	if _water_stroke_started_msec < 0:
 		return
-	water_level = _current_water_brush_level()
+	if not is_nan(_water_stroke_start_level):
+		water_level = _current_water_brush_level()
 	_water_stroke_started_msec = -1
+	_water_stroke_start_level = NAN
 	if _water_level_slider != null:
 		_water_level_slider.set_value_no_signal(water_level)
 	_update_brush_label()
@@ -1302,14 +1317,12 @@ func _update_cursor(screen_position: Vector2) -> void:
 func _apply_tool(world_position: Vector3) -> void:
 	var cell := Vector2i(roundi(world_position.x), roundi(world_position.z))
 	if active_tool.begins_with("terrain_"):
-		_terrain_surface.apply_brush(world_position, brush_radius, brush_strength, active_tool.trim_prefix("terrain_"))
-		_reposition_scene_content()
-		_water_surface.load_cells(_water_surface.serialize_cells())
+		_terrain_surface.queue_height_brush(world_position, brush_radius, brush_strength, active_tool.trim_prefix("terrain_"))
 	elif active_tool.begins_with("paint_"):
-		_terrain_surface.paint_texture(world_position, brush_radius, brush_strength, int(active_tool.trim_prefix("paint_")))
+		_terrain_surface.queue_texture_brush(world_position, brush_radius, brush_strength, int(active_tool.trim_prefix("paint_")))
 	elif active_tool == "water_add" or active_tool == "water_remove":
-		var active_water_level := _current_water_brush_level() if active_tool == "water_add" else water_level
-		_water_surface.apply_brush(world_position, brush_radius, active_tool == "water_remove", active_water_level)
+		var active_water_level := _current_water_brush_level(world_position.y) if active_tool == "water_add" else water_level
+		_water_surface.queue_brush(world_position, brush_radius, active_tool == "water_remove", active_water_level)
 	elif active_tool == "simple_grass":
 		_paint_simple_grass(world_position)
 	elif active_tool == "select":
@@ -1325,6 +1338,12 @@ func _apply_tool(world_position: Vector3) -> void:
 	else:
 		_scatter_objects(world_position)
 	_update_status("Obiekty: %d | Woda: %d pol" % [objects.size(), _water_surface.get_cell_count()])
+
+func _on_terrain_height_edit_finished() -> void:
+	# Rebuilding every placed scene after each sculpt stroke is prohibitively
+	# expensive on large maps. Newly painted content still snaps to terrain.
+	_update_selection_ui()
+
 
 func _paint_simple_grass(center: Vector3) -> void:
 	var requested := clampi(roundi(PI * brush_radius * brush_radius * object_density * 5.0), 1, 600)
@@ -1343,6 +1362,7 @@ func _paint_simple_grass(center: Vector3) -> void:
 func _scatter_objects(center: Vector3) -> void:
 	if not ASSETS.has(active_tool):
 		return
+	_ensure_object_spatial_index()
 	var obstacle := active_tool.begins_with("purple_tree_") or active_tool.begins_with("tree_real_") or active_tool.begins_with("premium_tree_") or active_tool == "large_tree"
 	var effective_density := clampf(object_density, 0.0, 1.0)
 	var maximum := 120 if obstacle else 240
@@ -1385,20 +1405,48 @@ func _scatter_objects(center: Vector3) -> void:
 			"normal_z": surface_normal.z,
 			"flipped": randf() < 0.5,
 		})
+		_index_object_position(active_tool, Vector2(x, z))
+		_object_spatial_index_count = objects.size()
 		added += 1
 	_selected_object_index = objects.size() - 1 if added > 0 else -1
 	_object_rebuild_pending = _object_rebuild_pending or added > 0
 	if not _painting_objects:
 		_flush_object_rebuild()
 
-func _has_nearby_object(kind: String, target_position: Vector2, minimum_distance: float) -> bool:
+func _ensure_object_spatial_index() -> void:
+	if _object_spatial_index_count == objects.size():
+		return
+	_object_spatial_index.clear()
 	for data: Dictionary in objects:
-		if str(data.get("type", "")) != kind:
-			continue
-		var existing := Vector2(float(data.get("x", 0.0)), float(data.get("z", 0.0)))
-		if existing.distance_to(target_position) < minimum_distance:
-			return true
+		var kind := str(data.get("type", ""))
+		var position := Vector2(float(data.get("x", 0.0)), float(data.get("z", 0.0)))
+		_index_object_position(kind, position)
+	_object_spatial_index_count = objects.size()
+
+
+func _index_object_position(kind: String, position: Vector2) -> void:
+	var cell := Vector2i(floori(position.x / OBJECT_SPATIAL_CELL_SIZE), floori(position.y / OBJECT_SPATIAL_CELL_SIZE))
+	var key := "%s|%d|%d" % [kind, cell.x, cell.y]
+	if not _object_spatial_index.has(key):
+		_object_spatial_index[key] = []
+	_object_spatial_index[key].append(position)
+
+
+func _has_nearby_object(kind: String, target_position: Vector2, minimum_distance: float) -> bool:
+	var center_cell := Vector2i(floori(target_position.x / OBJECT_SPATIAL_CELL_SIZE), floori(target_position.y / OBJECT_SPATIAL_CELL_SIZE))
+	var cell_radius := ceili(minimum_distance / OBJECT_SPATIAL_CELL_SIZE)
+	var minimum_distance_squared := minimum_distance * minimum_distance
+	for offset_y: int in range(-cell_radius, cell_radius + 1):
+		for offset_x: int in range(-cell_radius, cell_radius + 1):
+			var cell := center_cell + Vector2i(offset_x, offset_y)
+			var key := "%s|%d|%d" % [kind, cell.x, cell.y]
+			if not _object_spatial_index.has(key):
+				continue
+			for existing: Vector2 in _object_spatial_index[key]:
+				if existing.distance_squared_to(target_position) < minimum_distance_squared:
+					return true
 	return false
+
 
 func _erase_nearest(world_position: Vector3) -> void:
 	var best_index := -1
@@ -1601,6 +1649,10 @@ func _clear_map() -> void:
 	_update_status("Utworzono pustą mapę Terrain3D")
 
 func _save() -> void:
+	if _terrain_surface.is_height_brush_busy() or _terrain_surface.is_texture_brush_busy() or _water_surface.is_brush_busy():
+		_update_status("Kończenie edycji przed zapisem...")
+		while _terrain_surface.is_height_brush_busy() or _terrain_surface.is_texture_brush_busy() or _water_surface.is_brush_busy():
+			await get_tree().process_frame
 	var safe_name := map_name.to_lower().replace(" ", "_")
 	var terrain_directory := "user://maps/terrain/" + safe_name
 	_terrain_surface.save_to_directory(terrain_directory)

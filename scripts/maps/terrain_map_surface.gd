@@ -1,12 +1,16 @@
 class_name TerrainMapSurface
 extends Node3D
 
+signal height_edit_finished
+signal texture_edit_finished
+
 const MAP_SIZE := Vector2i(160, 190)
 const REGION_LOCATION := Vector2i.ZERO
 ## Wide sculpting range for deep valleys and genuinely mountain-scale terrain.
 const MIN_HEIGHT := -128.0
 const MAX_HEIGHT := 512.0
 const TERRAIN_TEXTURE_SIZE := 1024
+const HEIGHT_POINTS_PER_FRAME := 3000
 const PBR_ROOT := "res://assets/textures/terrain/ambientcg_2k/"
 const GLHF_ROOT := "res://assets/environment/terrain/glhf/"
 const PAINT_TEXTURES: Array[Dictionary] = [
@@ -36,6 +40,10 @@ var _data_directory: String = ""
 ## The editor no longer creates this surface; Terrain3D renders directly.
 var _overlay_multimesh: MultiMesh
 var _overlay_instance: MultiMeshInstance3D
+var _active_height_job: Dictionary = {}
+var _pending_height_request: Dictionary = {}
+var _active_texture_job: Dictionary = {}
+var _pending_texture_request: Dictionary = {}
 
 func setup(camera: Camera3D = null, data_directory: String = "", legacy_strokes: Array = []) -> void:
 	_data_directory = data_directory
@@ -102,96 +110,233 @@ func import_height_sampler(sampler: Callable) -> void:
 func apply_brush(center: Vector3, radius: float, strength: float, operation: String) -> void:
 	if terrain == null or _region == null:
 		return
+	var bounds := _brush_bounds(center, radius)
+	for z: int in range(bounds.position.y, bounds.end.y):
+		for x: int in range(bounds.position.x, bounds.end.x):
+			_apply_height_point(x, z, center, radius, strength, operation)
+	_finish_height_edit()
+
+
+func queue_height_brush(center: Vector3, radius: float, strength: float, operation: String) -> void:
+	if terrain == null or _region == null:
+		return
+	var request := {
+		"center": center,
+		"radius": radius,
+		"strength": strength,
+		"operation": operation,
+	}
+	if _active_height_job.is_empty():
+		_start_height_job(request)
+	else:
+		# Continuous strokes only need the newest not-yet-started sample.
+		# Replacing it prevents a large-brush backlog after releasing the mouse.
+		_pending_height_request = request
+
+
+func is_height_brush_busy() -> bool:
+	return not _active_height_job.is_empty() or not _pending_height_request.is_empty()
+
+
+func _process(_delta: float) -> void:
+	if not _active_height_job.is_empty():
+		_process_height_job()
+	elif not _active_texture_job.is_empty():
+		_process_texture_job()
+
+
+func _start_height_job(request: Dictionary) -> void:
+	var center: Vector3 = request["center"]
+	var radius: float = float(request["radius"])
+	var bounds := _brush_bounds(center, radius)
+	_active_height_job = request.duplicate()
+	_active_height_job["bounds"] = bounds
+	_active_height_job["x"] = bounds.position.x
+	_active_height_job["z"] = bounds.position.y
+
+
+func _process_height_job() -> void:
+	var bounds: Rect2i = _active_height_job["bounds"]
+	var center: Vector3 = _active_height_job["center"]
+	var radius: float = float(_active_height_job["radius"])
+	var strength: float = float(_active_height_job["strength"])
+	var operation: String = str(_active_height_job["operation"])
+	var x: int = int(_active_height_job["x"])
+	var z: int = int(_active_height_job["z"])
+	var processed := 0
+	while z < bounds.end.y and processed < HEIGHT_POINTS_PER_FRAME:
+		_apply_height_point(x, z, center, radius, strength, operation)
+		processed += 1
+		x += 1
+		if x >= bounds.end.x:
+			x = bounds.position.x
+			z += 1
+	if z < bounds.end.y:
+		_active_height_job["x"] = x
+		_active_height_job["z"] = z
+		return
+	_active_height_job.clear()
+	_finish_height_edit()
+	height_edit_finished.emit()
+	if not _pending_height_request.is_empty():
+		var next_request := _pending_height_request
+		_pending_height_request = {}
+		_start_height_job(next_request)
+
+
+func _brush_bounds(center: Vector3, radius: float) -> Rect2i:
 	var min_x := maxi(0, floori(center.x - radius))
 	var max_x := mini(_editable_map_size.x - 1, ceili(center.x + radius))
 	var min_z := maxi(0, floori(center.z - radius))
 	var max_z := mini(_editable_map_size.y - 1, ceili(center.z + radius))
-	var changes: Array[Vector3] = []
-	for z: int in range(min_z, max_z + 1):
-		for x: int in range(min_x, max_x + 1):
-			var distance := Vector2(float(x) - center.x, float(z) - center.z).length()
-			if distance >= radius:
-				continue
-			var influence: float = 1.0 - distance / radius
-			influence = influence * influence * (3.0 - 2.0 * influence)
-			var point := Vector3(float(x), 0.0, float(z))
-			var current_height := get_height(float(x), float(z))
-			var next_height := current_height
-			match operation:
-				"raise":
-					next_height += strength * influence
-				"lower":
-					next_height -= strength * influence
-				"smooth":
-					var average := _neighbor_average(x, z)
-					next_height = lerpf(current_height, average, clampf(strength * 0.42 * influence, 0.0, 0.92))
-				"flatten":
-					next_height = lerpf(current_height, center.y, clampf(strength * 0.45 * influence, 0.0, 0.92))
-				"noise":
-					var broad := sin(float(x) * 0.071 + float(z) * 0.039) * cos(float(z) * 0.061 - float(x) * 0.027)
-					var medium := sin(float(x) * 0.19 + float(z) * 0.23) * 0.32
-					next_height += (broad + medium) * strength * 0.48 * influence
-				"erode":
-					var erosion_average := _neighbor_average(x, z)
-					var erosion := clampf(strength * 0.34 * influence, 0.0, 0.78)
-					next_height = lerpf(current_height, erosion_average, erosion)
-					if current_height > erosion_average:
-						next_height -= minf(current_height - erosion_average, strength * 0.08 * influence)
-				"terrace":
-					var terrace_step := 1.35
-					var terraced := roundf(current_height / terrace_step) * terrace_step
-					next_height = lerpf(current_height, terraced, clampf(strength * 0.32 * influence, 0.0, 0.68))
-				"ridge":
-					var ridge_noise := 0.72 + 0.28 * sin(float(x) * 0.13 + sin(float(z) * 0.09) * 2.0)
-					next_height += strength * influence * influence * ridge_noise
-			changes.append(Vector3(point.x, clampf(next_height, MIN_HEIGHT, MAX_HEIGHT), point.z))
-	for change: Vector3 in changes:
-		terrain.data.set_height(Vector3(change.x, 0.0, change.z), change.y)
-	_finish_height_edit()
+	return Rect2i(min_x, min_z, max_x - min_x + 1, max_z - min_z + 1)
+
+
+func _apply_height_point(x: int, z: int, center: Vector3, radius: float, strength: float, operation: String) -> void:
+	var distance_squared := Vector2(float(x) - center.x, float(z) - center.z).length_squared()
+	var radius_squared := radius * radius
+	if distance_squared >= radius_squared:
+		return
+	var influence: float = 1.0 - sqrt(distance_squared) / radius
+	influence = influence * influence * (3.0 - 2.0 * influence)
+	var point := Vector3(float(x), 0.0, float(z))
+	var current_height := get_height(float(x), float(z))
+	var next_height := current_height
+	match operation:
+		"raise":
+			next_height += strength * influence
+		"lower":
+			next_height -= strength * influence
+		"smooth":
+			var average := _neighbor_average(x, z)
+			next_height = lerpf(current_height, average, clampf(strength * 0.42 * influence, 0.0, 0.92))
+		"flatten":
+			next_height = lerpf(current_height, center.y, clampf(strength * 0.45 * influence, 0.0, 0.92))
+		"noise":
+			var broad := sin(float(x) * 0.071 + float(z) * 0.039) * cos(float(z) * 0.061 - float(x) * 0.027)
+			var medium := sin(float(x) * 0.19 + float(z) * 0.23) * 0.32
+			next_height += (broad + medium) * strength * 0.48 * influence
+		"erode":
+			var erosion_average := _neighbor_average(x, z)
+			var erosion := clampf(strength * 0.34 * influence, 0.0, 0.78)
+			next_height = lerpf(current_height, erosion_average, erosion)
+			if current_height > erosion_average:
+				next_height -= minf(current_height - erosion_average, strength * 0.08 * influence)
+		"terrace":
+			var terrace_step := 1.35
+			var terraced := roundf(current_height / terrace_step) * terrace_step
+			next_height = lerpf(current_height, terraced, clampf(strength * 0.32 * influence, 0.0, 0.68))
+		"ridge":
+			var ridge_noise := 0.72 + 0.28 * sin(float(x) * 0.13 + sin(float(z) * 0.09) * 2.0)
+			next_height += strength * influence * influence * ridge_noise
+	terrain.data.set_height(point, clampf(next_height, MIN_HEIGHT, MAX_HEIGHT))
+
 
 func paint_texture(center: Vector3, radius: float, strength: float, texture_id: int) -> void:
 	if terrain == null or _region == null or texture_id < 0 or texture_id >= PAINT_TEXTURES.size():
 		return
-	var min_x := maxi(0, floori(center.x - radius))
-	var max_x := mini(_editable_map_size.x - 1, ceili(center.x + radius))
-	var min_z := maxi(0, floori(center.z - radius))
-	var max_z := mini(_editable_map_size.y - 1, ceili(center.z + radius))
-	for z: int in range(min_z, max_z + 1):
-		for x: int in range(min_x, max_x + 1):
-			var distance := Vector2(float(x) - center.x, float(z) - center.z).length()
-			if distance >= radius:
-				continue
-			var influence := 1.0 - distance / radius
-			influence = influence * influence * (3.0 - 2.0 * influence)
-			# Break up the brush silhouette while retaining a broad smooth falloff.
-			var edge_noise := 0.86
-			edge_noise += 0.18 * sin(float(x) * 0.73 + float(z) * 1.11)
-			edge_noise += 0.10 * sin(float(x) * 2.173 - float(z) * 1.417)
-			influence = clampf(influence * edge_noise, 0.0, 1.0)
-			var point := Vector3(float(x), 0.0, float(z))
-			var base_id := terrain.data.get_control_base_id(point)
-			var overlay_id := terrain.data.get_control_overlay_id(point)
-			var blend := terrain.data.get_control_blend(point)
-			var paint_amount := clampf(strength * 0.52 * influence, 0.0, 0.82)
-			if base_id == texture_id:
-				blend = maxf(0.0, blend - paint_amount)
-				terrain.data.set_control_blend(point, blend)
-			elif overlay_id == texture_id:
-				# Keep both layers alive at the center of a stroke. Collapsing them
-				# into one layer produced a visible hard ring between brush passes.
-				blend = minf(0.995, blend + paint_amount)
-				terrain.data.set_control_blend(point, blend)
-			else:
-				if blend > 0.5:
-					terrain.data.set_control_base_id(point, overlay_id)
-				terrain.data.set_control_overlay_id(point, texture_id)
-				terrain.data.set_control_blend(point, paint_amount)
-			terrain.data.set_control_auto(point, false)
-			terrain.data.set_control_angle(point, _texture_rotation_for_cell(x, z, texture_id))
-			var current_color := terrain.data.get_color(point)
-			terrain.data.set_color(point, current_color.lerp(Color.WHITE, clampf(strength * 0.24 * influence, 0.0, 1.0)))
+	var bounds := _brush_bounds(center, radius)
+	for z: int in range(bounds.position.y, bounds.end.y):
+		for x: int in range(bounds.position.x, bounds.end.x):
+			_apply_texture_point(x, z, center, radius, strength, texture_id)
+	_finish_texture_edit()
+
+
+func queue_texture_brush(center: Vector3, radius: float, strength: float, texture_id: int) -> void:
+	if terrain == null or _region == null or texture_id < 0 or texture_id >= PAINT_TEXTURES.size():
+		return
+	var request := {
+		"center": center,
+		"radius": radius,
+		"strength": strength,
+		"texture_id": texture_id,
+	}
+	if _active_texture_job.is_empty():
+		_start_texture_job(request)
+	else:
+		_pending_texture_request = request
+
+
+func is_texture_brush_busy() -> bool:
+	return not _active_texture_job.is_empty() or not _pending_texture_request.is_empty()
+
+
+func _start_texture_job(request: Dictionary) -> void:
+	var center: Vector3 = request["center"]
+	var radius: float = float(request["radius"])
+	var bounds := _brush_bounds(center, radius)
+	_active_texture_job = request.duplicate()
+	_active_texture_job["bounds"] = bounds
+	_active_texture_job["x"] = bounds.position.x
+	_active_texture_job["z"] = bounds.position.y
+
+
+func _process_texture_job() -> void:
+	var bounds: Rect2i = _active_texture_job["bounds"]
+	var center: Vector3 = _active_texture_job["center"]
+	var radius: float = float(_active_texture_job["radius"])
+	var strength: float = float(_active_texture_job["strength"])
+	var texture_id: int = int(_active_texture_job["texture_id"])
+	var x: int = int(_active_texture_job["x"])
+	var z: int = int(_active_texture_job["z"])
+	var processed := 0
+	while z < bounds.end.y and processed < HEIGHT_POINTS_PER_FRAME:
+		_apply_texture_point(x, z, center, radius, strength, texture_id)
+		processed += 1
+		x += 1
+		if x >= bounds.end.x:
+			x = bounds.position.x
+			z += 1
+	if z < bounds.end.y:
+		_active_texture_job["x"] = x
+		_active_texture_job["z"] = z
+		return
+	_active_texture_job.clear()
+	_finish_texture_edit()
+	texture_edit_finished.emit()
+	if not _pending_texture_request.is_empty():
+		var next_request := _pending_texture_request
+		_pending_texture_request = {}
+		_start_texture_job(next_request)
+
+
+func _apply_texture_point(x: int, z: int, center: Vector3, radius: float, strength: float, texture_id: int) -> void:
+	var distance_squared := Vector2(float(x) - center.x, float(z) - center.z).length_squared()
+	var radius_squared := radius * radius
+	if distance_squared >= radius_squared:
+		return
+	var influence := 1.0 - sqrt(distance_squared) / radius
+	influence = influence * influence * (3.0 - 2.0 * influence)
+	var edge_noise := 0.86
+	edge_noise += 0.18 * sin(float(x) * 0.73 + float(z) * 1.11)
+	edge_noise += 0.10 * sin(float(x) * 2.173 - float(z) * 1.417)
+	influence = clampf(influence * edge_noise, 0.0, 1.0)
+	var point := Vector3(float(x), 0.0, float(z))
+	var base_id := terrain.data.get_control_base_id(point)
+	var overlay_id := terrain.data.get_control_overlay_id(point)
+	var blend := terrain.data.get_control_blend(point)
+	var paint_amount := clampf(strength * 0.52 * influence, 0.0, 0.82)
+	if base_id == texture_id:
+		blend = maxf(0.0, blend - paint_amount)
+		terrain.data.set_control_blend(point, blend)
+	elif overlay_id == texture_id:
+		blend = minf(0.995, blend + paint_amount)
+		terrain.data.set_control_blend(point, blend)
+	else:
+		if blend > 0.5:
+			terrain.data.set_control_base_id(point, overlay_id)
+		terrain.data.set_control_overlay_id(point, texture_id)
+		terrain.data.set_control_blend(point, paint_amount)
+	terrain.data.set_control_auto(point, false)
+	terrain.data.set_control_angle(point, _texture_rotation_for_cell(x, z, texture_id))
+	var current_color := terrain.data.get_color(point)
+	terrain.data.set_color(point, current_color.lerp(Color.WHITE, clampf(strength * 0.24 * influence, 0.0, 1.0)))
+
+
+func _finish_texture_edit() -> void:
 	terrain.data.update_maps(Terrain3DRegion.TYPE_CONTROL, true, false)
 	terrain.data.update_maps(Terrain3DRegion.TYPE_COLOR, true, false)
+
 
 func fill_texture_rect(rect: Rect2i, texture_id: int) -> void:
 	if terrain == null or _region == null or texture_id < 0 or texture_id >= PAINT_TEXTURES.size():
@@ -246,6 +391,7 @@ func clear_height() -> void:
 	_finish_height_edit()
 
 func reset_blank() -> void:
+	cancel_queued_edits()
 	if terrain == null or _region == null:
 		return
 	for z: int in range(_editable_map_size.y):
@@ -272,6 +418,7 @@ func capture_state() -> Dictionary:
 
 
 func restore_state(state: Dictionary) -> void:
+	cancel_queued_edits()
 	if _region == null or state.is_empty():
 		return
 	var height_map := state.get("height") as Image
@@ -313,6 +460,14 @@ func save_to_directory(directory: String) -> void:
 
 func get_data_directory() -> String:
 	return _data_directory
+
+
+func cancel_queued_edits() -> void:
+	_active_height_job.clear()
+	_pending_height_request.clear()
+	_active_texture_job.clear()
+	_pending_texture_request.clear()
+
 
 func _initialize_base_height() -> void:
 	for z: int in range(terrain.region_size):
@@ -360,8 +515,7 @@ func _neighbor_average(x: int, z: int) -> float:
 	return total / float(count)
 
 func _finish_height_edit() -> void:
-	_region.calc_height_range()
-	terrain.data.update_maps(Terrain3DRegion.TYPE_HEIGHT, true, false)
+	terrain.data.update_maps(Terrain3DRegion.TYPE_HEIGHT, false, false)
 
 func _import_legacy_strokes(strokes: Array) -> void:
 	for raw_stroke: Variant in strokes:
