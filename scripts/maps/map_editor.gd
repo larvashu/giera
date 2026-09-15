@@ -180,6 +180,7 @@ var _viewport: SubViewport
 var _world: Node3D
 var _terrain_surface: TerrainMapSurface
 var _water_surface: WaterMapSurface
+var _waterways_rivers: WaterwaysRiverSurface
 var _objects_root: Node3D
 var _markers_root: Node3D
 var _camera: Camera3D
@@ -763,6 +764,8 @@ func _build_3d_view() -> void:
 	_world.add_child(_terrain_surface)
 	_water_surface = WaterMapSurface.new()
 	_world.add_child(_water_surface)
+	_waterways_rivers = WaterwaysRiverSurface.new()
+	_world.add_child(_waterways_rivers)
 	var sun := DirectionalLight3D.new()
 	_sun = sun
 	sun.rotation_degrees = Vector3(-55.0, -32.0, 0.0)
@@ -964,6 +967,7 @@ func _load_selected_saved_map() -> void:
 	_on_grass_color_changed(grass_color)
 	_water_surface.set_map_size(map_size)
 	_water_surface.load_cells(data.get("water_cells", []))
+	_waterways_rivers.load_rivers(data.get("rivers", []))
 	_undo_stack.clear()
 	_selected_object_index = -1
 	_frame_map_camera()
@@ -1643,6 +1647,7 @@ func _clear_map() -> void:
 	_frame_map_camera()
 	_water_surface.set_map_size(map_size)
 	_water_surface.clear()
+	_waterways_rivers.clear()
 	_rebuild_objects()
 	_update_markers()
 	_update_selection_ui()
@@ -1670,6 +1675,7 @@ func _save() -> void:
 		"enemy_spawns": enemy_spawns,
 		"terrain_directory": terrain_directory,
 		"water_cells": _water_surface.serialize_cells(),
+		"rivers": _waterways_rivers.serialize_rivers(),
 	})
 	_update_status("Zapisano: " + path)
 
