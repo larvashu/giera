@@ -81,7 +81,7 @@ func set_map_size_multiplier(multiplier: int) -> void:
 	var safe_multiplier := clampi(multiplier, 1, 8)
 	_editable_map_size = MAP_SIZE * safe_multiplier
 	terrain.vertex_spacing = 1.0
-	terrain.mesh_lods = 7 if safe_multiplier >= 4 else 5
+	terrain.mesh_lods = 8 if safe_multiplier >= 4 else 6
 	var region_columns := ceili(float(_editable_map_size.x) / float(terrain.region_size))
 	var region_rows := ceili(float(_editable_map_size.y) / float(terrain.region_size))
 	for existing_location: Vector2i in terrain.data.get_region_locations():
@@ -94,6 +94,11 @@ func set_map_size_multiplier(multiplier: int) -> void:
 			var region := terrain.data.get_region(location)
 			if region == null:
 				region = terrain.data.add_region_blank(location, false)
+			elif terrain.data.is_region_deleted(location):
+				# remove_regionl() marks regions as deleted but get_region() still
+				# returns them. Reactivate them when resizing/reloading, otherwise
+				# every second 256 m strip can remain absent on a large map.
+				terrain.data.set_region_deleted(location, false)
 			_regions.append(region)
 	_region = terrain.data.get_region(REGION_LOCATION)
 

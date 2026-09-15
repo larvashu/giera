@@ -60,3 +60,37 @@ func _create_river(data: Dictionary) -> void:
 	river.set("shape_step_width_divs", 3)
 	river.set("shape_smoothness", 0.8)
 	river.call("_generate_river")
+	# Keep Waterways' purpose-built river shader: it follows the spline UVs and
+	# provides depth colour, shoreline fading, refraction, foam and moving normals.
+	# A generic plane/cubemap material cannot preserve the direction of the current.
+	_tune_river_material(river)
+
+
+func _tune_river_material(river: Node3D) -> void:
+	river.call("set_materials", "normal_scale", 0.72)
+	river.call("set_materials", "uv_scale", Vector3(0.34, 0.34, 0.34))
+	river.call("set_materials", "roughness", 0.055)
+	river.call("set_materials", "edge_fade", 0.42)
+	var water_gradient := Transform3D(
+		Vector3(0.055, 0.34, 0.36),
+		Vector3(0.012, 0.095, 0.16),
+		Vector3.ZERO,
+		Vector3.ZERO
+	)
+	river.call("set_materials", "albedo_color", water_gradient)
+	river.call("set_materials", "albedo_depth", 4.8)
+	river.call("set_materials", "albedo_depth_curve", 0.48)
+	river.call("set_materials", "transparency_clarity", 8.0)
+	river.call("set_materials", "transparency_depth_curve", 0.52)
+	river.call("set_materials", "transparency_refraction", 0.032)
+	river.call("set_materials", "flow_speed", 0.42)
+	river.call("set_materials", "flow_base", 0.72)
+	river.call("set_materials", "flow_steepness", 1.35)
+	river.call("set_materials", "flow_distance", 0.55)
+	river.call("set_materials", "flow_pressure", 0.65)
+	river.call("set_materials", "flow_max", 2.4)
+	river.call("set_materials", "foam_amount", 1.25)
+	river.call("set_materials", "foam_steepness", 1.75)
+	river.call("set_materials", "foam_smoothness", 0.62)
+	river.call("set_materials", "foam_color", Color(0.86, 0.94, 0.94, 1.0))
+	river.call("set_materials", "i_lod0_distance", 140.0)

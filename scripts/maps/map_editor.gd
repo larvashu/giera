@@ -1129,10 +1129,12 @@ func _toggle_fpp() -> void:
 		_camera.projection = Camera3D.PROJECTION_PERSPECTIVE
 		_camera.position = _ghost_position
 		_camera.rotation = Vector3(_fpp_pitch, _ghost_yaw, 0.0)
-		_camera.far = 260.0
+		# The largest 8x map is over 1.5 km deep. Keep distant terrain and
+		# decoration visible in first person instead of clipping it at 260 m.
+		_camera.far = 12000.0
 		_viewport.scaling_3d_scale = 0.78
 		if _sun != null:
-			_sun.directional_shadow_max_distance = 140.0
+			_sun.directional_shadow_max_distance = 1200.0
 		_cursor.visible = true
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		_update_status("FPP — WASD/mysz | przytrzymaj R: maluj | Space/Ctrl: góra/dół | Tab: powrót")
