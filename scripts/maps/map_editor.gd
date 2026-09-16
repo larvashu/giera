@@ -771,14 +771,14 @@ func _build_3d_view() -> void:
 	sun.rotation_degrees = Vector3(-55.0, -32.0, 0.0)
 	sun.shadow_enabled = true
 	sun.light_color = Color(1.0, 0.94, 0.82)
-	sun.light_energy = 1.42
-	sun.light_indirect_energy = 0.82
-	sun.light_volumetric_fog_energy = 0.18
-	sun.light_angular_distance = 0.48
+	sun.light_energy = 1.26
+	sun.light_indirect_energy = 0.68
+	sun.light_volumetric_fog_energy = 0.62
+	sun.light_angular_distance = 0.53
 	sun.shadow_opacity = 0.88
-	sun.shadow_blur = 0.82
-	sun.shadow_bias = 0.045
-	sun.shadow_normal_bias = 0.92
+	sun.shadow_blur = 1.15
+	sun.shadow_bias = 0.035
+	sun.shadow_normal_bias = 0.72
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
 	sun.directional_shadow_max_distance = 420.0
 	sun.directional_shadow_fade_start = 0.88
@@ -789,34 +789,40 @@ func _build_3d_view() -> void:
 	_environment = environment
 	environment.background_mode = Environment.BG_SKY
 	environment.sky = _create_day_sky()
-	environment.background_energy_multiplier = 1.02
+	environment.background_energy_multiplier = 1.0
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	environment.ambient_light_sky_contribution = 0.82
-	environment.ambient_light_energy = 0.72
+	environment.ambient_light_sky_contribution = 0.92
+	environment.ambient_light_energy = 0.54
 	environment.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
 	environment.tonemap_mode = Environment.TONE_MAPPER_AGX
-	environment.tonemap_exposure = 1.12
-	environment.tonemap_agx_contrast = 1.10
+	environment.tonemap_exposure = 1.04
+	environment.tonemap_agx_contrast = 1.18
 	environment.ssao_enabled = true
-	environment.ssao_radius = 1.8
-	environment.ssao_intensity = 1.45
-	environment.ssao_power = 1.25
-	environment.ssao_detail = 0.65
+	environment.ssao_radius = 1.45
+	environment.ssao_intensity = 1.12
+	environment.ssao_power = 1.35
+	environment.ssao_detail = 0.72
 	environment.ssil_enabled = true
-	environment.ssil_radius = 2.2
-	environment.ssil_intensity = 0.62
+	environment.ssil_radius = 2.0
+	environment.ssil_intensity = 0.46
 	environment.sdfgi_enabled = true
 	environment.sdfgi_energy = 1.05
 	environment.glow_enabled = true
-	environment.glow_intensity = 0.32
-	environment.glow_bloom = 0.035
+	environment.glow_intensity = 0.24
+	environment.glow_bloom = 0.025
 	environment.fog_enabled = true
-	environment.fog_light_color = Color(0.72, 0.84, 0.94)
-	environment.fog_light_energy = 0.46
-	environment.fog_density = 0.00010
-	environment.fog_aerial_perspective = 0.42
-	environment.fog_sun_scatter = 0.16
-	environment.volumetric_fog_enabled = false
+	environment.fog_light_color = Color(0.66, 0.76, 0.86)
+	environment.fog_light_energy = 0.34
+	environment.fog_density = 0.00014
+	environment.fog_aerial_perspective = 0.62
+	environment.fog_sun_scatter = 0.26
+	# A short, subtle volumetric layer grounds valleys without fogging the
+	# full 12 km camera range or paying for long-distance ray marching.
+	environment.volumetric_fog_enabled = true
+	environment.volumetric_fog_density = 0.0022
+	environment.volumetric_fog_length = 320.0
+	environment.volumetric_fog_detail_spread = 1.7
+	environment.volumetric_fog_ambient_inject = 0.58
 	world_environment.environment = environment
 	_world.add_child(world_environment)
 	_cursor = MeshInstance3D.new()
@@ -873,12 +879,15 @@ func _create_day_sky() -> Sky:
 	var sky_material := ShaderMaterial.new()
 	sky_material.shader = CLOUD_SKY_SHADER
 	sky_material.set_shader_parameter("wind_direction", Vector2(0.9, 0.28))
-	sky_material.set_shader_parameter("wind_speed", 0.32)
-	sky_material.set_shader_parameter("cloud_coverage", 0.38)
+	sky_material.set_shader_parameter("wind_speed", 0.22)
+	sky_material.set_shader_parameter("cloud_coverage", 0.46)
+	sky_material.set_shader_parameter("cloud_density", 1.05)
 	var sky := Sky.new()
 	sky.sky_material = sky_material
-	sky.process_mode = Sky.PROCESS_MODE_REALTIME
-	sky.radiance_size = Sky.RADIANCE_SIZE_256
+	# Incremental updates keep animated clouds while avoiding a full IBL
+	# cubemap rebuild every frame.
+	sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL
+	sky.radiance_size = Sky.RADIANCE_SIZE_512
 	return sky
 func _build_load_map_dialog() -> void:
 	_load_map_dialog = ConfirmationDialog.new()
@@ -1132,9 +1141,11 @@ func _toggle_fpp() -> void:
 		# The largest 8x map is over 1.5 km deep. Keep distant terrain and
 		# decoration visible in first person instead of clipping it at 260 m.
 		_camera.far = 12000.0
-		_viewport.scaling_3d_scale = 0.78
+		# FPP needs native resolution for distant terrain detail; the editor
+		# overview keeps its cheaper scale when leaving first person.
+		_viewport.scaling_3d_scale = 1.0
 		if _sun != null:
-			_sun.directional_shadow_max_distance = 1200.0
+			_sun.directional_shadow_max_distance = 600.0
 		_cursor.visible = true
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		_update_status("FPP — WASD/mysz | przytrzymaj R: maluj | Space/Ctrl: góra/dół | Tab: powrót")

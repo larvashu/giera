@@ -362,11 +362,10 @@ func fill_texture_rect(rect: Rect2i, texture_id: int) -> void:
 	terrain.data.update_maps(Terrain3DRegion.TYPE_COLOR, true, false)
 
 
-func _texture_rotation_for_cell(x: int, z: int, texture_id: int) -> float:
-	var tile_x := floori(float(x) / 8.0)
-	var tile_z := floori(float(z) / 8.0)
-	var hash_value: int = absi(tile_x * 73856093 ^ tile_z * 19349663 ^ texture_id * 83492791)
-	return float(hash_value % 4) * 90.0
+func _texture_rotation_for_cell(_x: int, _z: int, _texture_id: int) -> float:
+	# Per-cell 90-degree jumps created visible 8 m squares. Terrain3D asset
+	# detiling handles repetition continuously without discontinuous UV angles.
+	return 0.0
 
 
 func get_height(world_x: float, world_z: float) -> float:
@@ -494,8 +493,8 @@ func _ensure_paintable_control() -> void:
 			for x: int in range(terrain.region_size):
 				color_map.set_pixel(x, z, Color.WHITE)
 		_region.set_color_map(color_map)
-	for z: int in range(MAP_SIZE.y):
-		for x: int in range(MAP_SIZE.x):
+	for z: int in range(_editable_map_size.y):
+		for x: int in range(_editable_map_size.x):
 			var point := Vector3(float(x), 0.0, float(z))
 			var base_id := terrain.data.get_control_base_id(point)
 			var overlay_id := terrain.data.get_control_overlay_id(point)
@@ -633,12 +632,17 @@ func _configure_material() -> void:
 			asset.normal_texture = _prepare_terrain_texture(str(definition["normal"]), true)
 		asset.uv_scale = float(definition["uv_scale"])
 		asset.roughness = float(definition["roughness"])
+		asset.normal_depth = 1.08 if texture_id in [5, 6, 7, 8, 9, 10, 11] else 0.92
+		# Continuous per-asset detiling prevents repeating grids without writing
+		# hard 90-degree angle changes into the terrain control map.
+		asset.detiling_rotation = 0.18 + float(texture_id % 4) * 0.07
+		asset.detiling_shift = 0.12 + float(texture_id % 3) * 0.055
 		texture_assets.append(asset)
 	terrain.assets.set_texture_list(texture_assets)
 	terrain.assets.update_texture_list()
 	# `show_colormap` is a white diagnostic view, not the regular color multiplier.
 	terrain.material.show_colormap = false
-	terrain.material.dual_scaling = false
+	terrain.material.dual_scaling = true
 	terrain.material.update()
 	terrain.show_grey = false
 	terrain.material.world_background = Terrain3DMaterial.NONE
