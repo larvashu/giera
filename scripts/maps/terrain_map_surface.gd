@@ -17,9 +17,9 @@ const PAINT_TEXTURES: Array[Dictionary] = [
 	{"name": "Trawa", "path": PBR_ROOT + "Grass001_2K-PNG/Grass001_2K-PNG_Color.png", "normal": PBR_ROOT + "Grass001_2K-PNG/Grass001_2K-PNG_NormalGL.png", "height": PBR_ROOT + "Grass001_2K-PNG/Grass001_2K-PNG_Displacement.png", "roughness_map": PBR_ROOT + "Grass001_2K-PNG/Grass001_2K-PNG_Roughness.png", "uv_scale": 0.18, "roughness": 0.72},
 	{"name": "Sucha trawa", "path": PBR_ROOT + "Grass004_2K-PNG/Grass004_2K-PNG_Color.png", "normal": PBR_ROOT + "Grass004_2K-PNG/Grass004_2K-PNG_NormalGL.png", "uv_scale": 0.18, "roughness": 0.78},
 	{"name": "Leśna ściółka 03", "path": GLHF_ROOT + "forrest_ground_03/forrest_ground_03_diff_4k.jpg", "normal": GLHF_ROOT + "forrest_ground_03/forrest_ground_03_nor_gl_4k.jpg", "uv_scale": 0.20, "roughness": 0.88},
-	{"name": "Leśna ziemia 05", "path": GLHF_ROOT + "forest_ground_05/forest_ground_05_diff_4k.jpg", "normal": GLHF_ROOT + "forest_ground_05/forest_ground_05_nor_gl_4k.jpg", "uv_scale": 0.20, "roughness": 0.86},
-	{"name": "Leśna ziemia 06", "path": GLHF_ROOT + "forest_ground_06/forest_ground_06_diff_4k.jpg", "normal": GLHF_ROOT + "forest_ground_06/forest_ground_06_nor_gl_4k.jpg", "uv_scale": 0.20, "roughness": 0.84},
-	{"name": "Kamyki rzeczne", "path": GLHF_ROOT + "dry_river_pebbles/dry_river_pebbles_diff_4k.jpg", "normal": GLHF_ROOT + "dry_river_pebbles/dry_river_pebbles_nor_gl_4k.jpg", "uv_scale": 0.19, "roughness": 0.82},
+	{"name": "Leśna ziemia 05", "path": GLHF_ROOT + "forest_ground_05/forest_ground_05_diff_4k.jpg", "normal": GLHF_ROOT + "forest_ground_05/forest_ground_05_nor_gl_4k.jpg", "arm": GLHF_ROOT + "forest_ground_05/forest_ground_05_arm_4k.jpg", "uv_scale": 0.20, "roughness": 0.86},
+	{"name": "Leśna ziemia 06", "path": GLHF_ROOT + "forest_ground_06/forest_ground_06_diff_4k.jpg", "normal": GLHF_ROOT + "forest_ground_06/forest_ground_06_nor_gl_4k.jpg", "arm": GLHF_ROOT + "forest_ground_06/forest_ground_06_arm_4k.jpg", "uv_scale": 0.20, "roughness": 0.84},
+	{"name": "Kamyki rzeczne", "path": GLHF_ROOT + "dry_river_pebbles/dry_river_pebbles_diff_4k.jpg", "normal": GLHF_ROOT + "dry_river_pebbles/dry_river_pebbles_nor_gl_4k.jpg", "arm": GLHF_ROOT + "dry_river_pebbles/dry_river_pebbles_arm_4k.jpg", "uv_scale": 0.19, "roughness": 0.82},
 	{"name": "Skaliste podłoże", "path": GLHF_ROOT + "rocks_ground_01/rocks_ground_01_diff_4k.jpg", "normal": GLHF_ROOT + "rocks_ground_01/rocks_ground_01_nor_gl_4k.jpg", "uv_scale": 0.17, "roughness": 0.90},
 	{"name": "Szare skały", "path": GLHF_ROOT + "gray_rocks/gray_rocks_diff_4k.jpg", "normal": GLHF_ROOT + "gray_rocks/gray_rocks_nor_gl_4k.jpg", "uv_scale": 0.16, "roughness": 0.89},
 	{"name": "Ciemna skała", "path": GLHF_ROOT + "dark_rock/dark_rock_diff_4k.jpg", "normal": GLHF_ROOT + "dark_rock/dark_rock_nor_gl_4k.jpg", "uv_scale": 0.16, "roughness": 0.91},
@@ -628,8 +628,8 @@ func _configure_material() -> void:
 			asset.albedo_texture = _create_solid_texture(Color.WHITE)
 			asset.normal_texture = _create_solid_texture(Color(0.5, 0.5, 1.0, 1.0))
 		else:
-			asset.albedo_texture = _prepare_terrain_texture(str(definition["path"]), false)
-			asset.normal_texture = _prepare_terrain_texture(str(definition["normal"]), true)
+			asset.albedo_texture = _prepare_terrain_albedo(definition)
+			asset.normal_texture = _prepare_terrain_normal(definition)
 		asset.uv_scale = float(definition["uv_scale"])
 		asset.roughness = float(definition["roughness"])
 		asset.normal_depth = 1.08 if texture_id in [5, 6, 7, 8, 9, 10, 11] else 0.92
@@ -654,23 +654,53 @@ func _create_solid_texture(color: Color) -> Texture2D:
 	return ImageTexture.create_from_image(image)
 
 
-func _prepare_terrain_texture(path: String, is_normal: bool) -> Texture2D:
+func _prepare_terrain_albedo(definition: Dictionary) -> Texture2D:
+	var image := _load_terrain_image(str(definition["path"]))
+	if image == null:
+		return null
+	var height_image: Image = _load_terrain_image(str(definition.get("height", "")))
+	for y: int in range(image.get_height()):
+		for x: int in range(image.get_width()):
+			var color := image.get_pixel(x, y)
+			color.a = height_image.get_pixel(x, y).r if height_image != null else 0.5
+			image.set_pixel(x, y, color)
+	image.generate_mipmaps(true)
+	return ImageTexture.create_from_image(image)
+
+
+func _prepare_terrain_normal(definition: Dictionary) -> Texture2D:
+	var image := _load_terrain_image(str(definition["normal"]))
+	if image == null:
+		return null
+	var arm_image: Image = _load_terrain_image(str(definition.get("arm", "")))
+	var roughness_image: Image = _load_terrain_image(str(definition.get("roughness_map", "")))
+	var fallback_roughness := float(definition.get("roughness", 0.9))
+	for y: int in range(image.get_height()):
+		for x: int in range(image.get_width()):
+			var color := image.get_pixel(x, y)
+			if roughness_image != null:
+				color.a = roughness_image.get_pixel(x, y).r
+			elif arm_image != null:
+				color.a = arm_image.get_pixel(x, y).g
+			else:
+				color.a = fallback_roughness
+			image.set_pixel(x, y, color)
+	image.generate_mipmaps(false)
+	return ImageTexture.create_from_image(image)
+
+
+func _load_terrain_image(path: String) -> Image:
+	if path.is_empty():
+		return null
 	var source := load(path) as Texture2D
 	if source == null:
-		push_error("Brak tekstury Terrain3D: " + path)
 		return null
 	var image := source.get_image()
 	if image == null or image.is_empty():
-		push_error("Nie można odczytać tekstury Terrain3D: " + path)
 		return null
 	if image.is_compressed():
 		image.decompress()
 	if image.get_width() != TERRAIN_TEXTURE_SIZE or image.get_height() != TERRAIN_TEXTURE_SIZE:
 		image.resize(TERRAIN_TEXTURE_SIZE, TERRAIN_TEXTURE_SIZE, Image.INTERPOLATE_LANCZOS)
 	image.convert(Image.FORMAT_RGBA8)
-	if is_normal:
-		# Terrain3D expects all normal layers in the same linear RGBA layout.
-		image.generate_mipmaps(false)
-	else:
-		image.generate_mipmaps(true)
-	return ImageTexture.create_from_image(image)
+	return image

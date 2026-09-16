@@ -167,8 +167,33 @@ func _get_parts(kind: String) -> Array:
 	if kind.begins_with("premium_tree_"):
 		for part: Dictionary in parts:
 			part["mesh"] = _apply_premium_tree_materials(part["mesh"] as Mesh)
+	if "rock" in kind or "kamien" in kind or kind.begins_with("moss_"):
+		_ground_mesh_parts(parts)
 	_part_cache[kind] = parts
 	return parts
+
+
+func _ground_mesh_parts(parts: Array) -> void:
+	var minimum_y := INF
+	for part: Dictionary in parts:
+		var mesh := part["mesh"] as Mesh
+		var part_transform := part["transform"] as Transform3D
+		if mesh == null:
+			continue
+		var bounds := mesh.get_aabb()
+		for corner_index: int in range(8):
+			var corner := bounds.position + Vector3(
+				bounds.size.x if corner_index & 1 else 0.0,
+				bounds.size.y if corner_index & 2 else 0.0,
+				bounds.size.z if corner_index & 4 else 0.0
+			)
+			minimum_y = minf(minimum_y, (part_transform * corner).y)
+	if not is_finite(minimum_y) or absf(minimum_y) < 0.001:
+		return
+	for part: Dictionary in parts:
+		var part_transform := part["transform"] as Transform3D
+		part_transform.origin.y -= minimum_y
+		part["transform"] = part_transform
 
 func _apply_premium_tree_materials(source: Mesh) -> Mesh:
 	var mesh := source.duplicate(true) as Mesh

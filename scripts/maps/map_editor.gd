@@ -1357,8 +1357,10 @@ func _apply_tool(world_position: Vector3) -> void:
 	_update_status("Obiekty: %d | Woda: %d pol" % [objects.size(), _water_surface.get_cell_count()])
 
 func _on_terrain_height_edit_finished() -> void:
-	# Rebuilding every placed scene after each sculpt stroke is prohibitively
-	# expensive on large maps. Newly painted content still snaps to terrain.
+	# Rebuild once after the stroke so rocks and vegetation follow the edited
+	# Terrain3D surface instead of retaining their previous world height.
+	_object_rebuild_pending = true
+	_flush_object_rebuild()
 	_update_selection_ui()
 
 
