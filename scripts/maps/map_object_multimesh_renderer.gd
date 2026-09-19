@@ -2,6 +2,7 @@ class_name MapObjectMultiMeshRenderer
 extends Node3D
 
 const OBJECT_CHUNK_SIZE := 24.0
+const VEGETATION_WIND_SHADER := preload("res://scripts/maps/vegetation_wind.gdshader")
 const PREMIUM_PBR: Dictionary[String, Dictionary] = {
 	"moss_rock_08": {"albedo": "res://assets/environment/premium_imports/moss_rock_08/moss rock 08 sketchfab/moss rock 08 color (4096).jpg", "normal": "res://assets/environment/premium_imports/moss_rock_08/moss rock 08 sketchfab/moss rock 08 normal (4096).png", "roughness": "res://assets/environment/premium_imports/moss_rock_08/moss rock 08 sketchfab/moss rock 08 roughness (4096).png"},
 	"moss_rock_09": {"albedo": "res://assets/environment/premium_imports/moss_rock_09/moss rock 09 sketchfab/moss rock 09 Color (4096).jpg", "normal": "res://assets/environment/premium_imports/moss_rock_09/moss rock 09 sketchfab/moss rock 09_normal (4096).png", "roughness": "res://assets/environment/premium_imports/moss_rock_09/moss rock 09 sketchfab/moss rock 09_roughness (4096).jpg"},
@@ -74,12 +75,24 @@ var _part_cache: Dictionary[String, Array] = {}
 var _grass_proxy: ArrayMesh
 var _bush_proxy: SphereMesh
 var _soil_proxy: PlaneMesh
+var _wind_direction := Vector2(0.86, 0.50)
+var _wind_strength := 0.42
+var _wind_speed := 0.72
+var _wind_gust_strength := 0.38
 
 func configure(assets: Dictionary[String, String], position_resolver: Callable, create_collisions: bool = false, obstacle_types: Array[String] = DEFAULT_OBSTACLES) -> void:
 	_assets = assets.duplicate()
 	_position_resolver = position_resolver
 	_create_collisions = create_collisions
 	_obstacle_types = obstacle_types.duplicate()
+
+
+func configure_wind(direction: Vector2, strength: float, speed: float, gust_strength: float) -> void:
+	_wind_direction = direction.normalized() if direction.length_squared() > 0.001 else Vector2.RIGHT
+	_wind_strength = maxf(strength, 0.0)
+	_wind_speed = maxf(speed, 0.0)
+	_wind_gust_strength = maxf(gust_strength, 0.0)
+	_part_cache.clear()
 
 func rebuild(objects: Array[Dictionary]) -> void:
 	for child: Node in get_children():
@@ -167,10 +180,55 @@ func _get_parts(kind: String) -> Array:
 	if kind.begins_with("premium_tree_"):
 		for part: Dictionary in parts:
 			part["mesh"] = _apply_premium_tree_materials(part["mesh"] as Mesh)
+	if _is_vegetation(kind):
+		for part: Dictionary in parts:
+			part["mesh"] = _apply_vegetation_wind(part["mesh"] as Mesh, kind)
 	if "rock" in kind or "kamien" in kind or kind.begins_with("moss_"):
 		_ground_mesh_parts(parts)
 	_part_cache[kind] = parts
 	return parts
+
+
+func _is_vegetation(kind: String) -> bool:
+	return "tree" in kind or "bush" in kind or kind.begins_with("grass_") or kind == "large_tree"
+
+
+func _apply_vegetation_wind(source: Mesh, kind: String) -> Mesh:
+	if source == null:
+		return source
+	var mesh := source.duplicate(true) as Mesh
+	var bounds := mesh.get_aabb()
+	var stiffness := 0.58 if ("tree" in kind or kind == "large_tree") else 0.24
+	var flutter := 0.08 if stiffness > 0.5 else 0.17
+	for surface_index: int in range(mesh.get_surface_count()):
+		var source_material := mesh.surface_get_material(surface_index)
+		if not source_material is BaseMaterial3D:
+			continue
+		var base := source_material as BaseMaterial3D
+		if base.albedo_texture == null:
+			continue
+		var material := ShaderMaterial.new()
+		material.shader = VEGETATION_WIND_SHADER
+		material.set_shader_parameter("albedo_texture", base.albedo_texture)
+		material.set_shader_parameter("albedo_color", base.albedo_color)
+		material.set_shader_parameter("roughness_value", base.roughness)
+		material.set_shader_parameter("normal_texture", base.normal_texture)
+		material.set_shader_parameter("use_normal_texture", base.normal_enabled and base.normal_texture != null)
+		material.set_shader_parameter("normal_strength", base.normal_scale)
+		material.set_shader_parameter("roughness_texture", base.roughness_texture)
+		material.set_shader_parameter("use_roughness_texture", base.roughness_texture != null)
+		material.set_shader_parameter("alpha_scissor", base.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA_SCISSOR)
+		material.set_shader_parameter("alpha_cut", base.alpha_scissor_threshold)
+		material.set_shader_parameter("mesh_base_y", bounds.position.y)
+		material.set_shader_parameter("mesh_height", maxf(bounds.size.y, 0.01))
+		material.set_shader_parameter("stiffness", stiffness)
+		material.set_shader_parameter("branch_flutter", flutter)
+		material.set_shader_parameter("wind_direction", _wind_direction)
+		material.set_shader_parameter("wind_strength", _wind_strength)
+		material.set_shader_parameter("wind_speed", _wind_speed)
+		material.set_shader_parameter("gust_strength", _wind_gust_strength)
+		mesh.surface_set_material(surface_index, material)
+	return mesh
 
 
 func _ground_mesh_parts(parts: Array) -> void:

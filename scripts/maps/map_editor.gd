@@ -10,6 +10,14 @@ const MAX_BRUSH_RADIUS := 180.0
 const WATER_RISE_PER_SECOND := 2.0
 const OBJECT_SPATIAL_CELL_SIZE := 16.0
 const CLOUD_SKY_SHADER: Shader = preload("res://scripts/maps/editor_clouds.gdshader")
+
+@export_group("Outdoor visuals")
+@export_enum("Medium", "High", "Ultra") var visual_quality := 1
+@export var wind_direction := Vector2(0.86, 0.50)
+@export_range(0.0, 2.0, 0.01) var wind_strength := 0.42
+@export_range(0.0, 4.0, 0.01) var wind_speed := 0.72
+@export_range(0.0, 2.0, 0.01) var wind_gust_strength := 0.38
+@export_range(0.0, 1.0, 0.01) var grass_wind_stiffness := 0.48
 const ASSETS: Dictionary[String, String] = {
 	"purple_tree_1": "res://assets/models/environment/purple_tree_01.glb",
 	"purple_tree_2": "res://assets/models/environment/purple_tree_02.glb",
@@ -210,6 +218,7 @@ var _asset_preview_cache: Dictionary[String, Texture2D] = {}
 func _ready() -> void:
 	_build_sidebar_controls()
 	_build_3d_view()
+	_apply_visual_quality()
 	_build_bottom_toolbar()
 	_build_load_map_dialog()
 	await _terrain_surface.setup(_camera)
@@ -747,6 +756,8 @@ func _build_3d_view() -> void:
 	_object_renderer.name = "ObjectMultiMeshes"
 	_objects_root.add_child(_object_renderer)
 	_object_renderer.configure(ASSETS, _resolve_editor_object_position, false)
+	_object_renderer.configure_wind(wind_direction, wind_strength, wind_speed, wind_gust_strength)
+	_configure_shared_wind()
 	_grass_layer = GRASS_LAYER_SCRIPT.new() as Node3D
 	_grass_layer.name = "SimpleGrassLayer"
 	_objects_root.add_child(_grass_layer)
@@ -889,6 +900,50 @@ func _create_day_sky() -> Sky:
 	sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL
 	sky.radiance_size = Sky.RADIANCE_SIZE_512
 	return sky
+func _configure_shared_wind() -> void:
+	var grass_system := get_node_or_null("/root/SimpleGrass")
+	if grass_system == null:
+		return
+	var direction := wind_direction.normalized() if wind_direction.length_squared() > 0.001 else Vector2.RIGHT
+	grass_system.set("wind_direction", Vector3(direction.x, 0.0, direction.y))
+	grass_system.set("wind_strength", wind_strength * 0.55)
+	grass_system.set("wind_turbulence", maxf(wind_speed, 0.05))
+
+
+func _apply_visual_quality() -> void:
+	if _viewport == null or _environment == null or _sun == null:
+		return
+	match visual_quality:
+		0:
+			_viewport.msaa_3d = Viewport.MSAA_2X
+			_viewport.use_taa = false
+			_viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
+			_viewport.scaling_3d_scale = 0.86
+			_environment.ssil_enabled = false
+			_environment.sdfgi_enabled = false
+			_environment.volumetric_fog_enabled = false
+			_sun.directional_shadow_max_distance = 360.0
+		1:
+			_viewport.msaa_3d = Viewport.MSAA_2X
+			_viewport.use_taa = true
+			_viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+			_viewport.scaling_3d_scale = 0.90
+			_environment.ssil_enabled = true
+			_environment.sdfgi_enabled = true
+			_environment.volumetric_fog_enabled = true
+			_sun.directional_shadow_max_distance = 520.0
+		_:
+			_viewport.msaa_3d = Viewport.MSAA_4X
+			_viewport.use_taa = true
+			_viewport.screen_space_aa = Viewport.SCREEN_SPACE_AA_DISABLED
+			_viewport.scaling_3d_scale = 1.0
+			_environment.ssil_enabled = true
+			_environment.sdfgi_enabled = true
+			_environment.volumetric_fog_enabled = true
+			_environment.volumetric_fog_length = 420.0
+			_sun.directional_shadow_max_distance = 760.0
+
+
 func _build_load_map_dialog() -> void:
 	_load_map_dialog = ConfirmationDialog.new()
 	_load_map_dialog.title = "Wczytaj zapisaną mapę"
@@ -1074,7 +1129,15 @@ func _process(delta: float) -> void:
 		direction -= Vector3.UP
 	var speed := _fpp_speed * (3.0 if Input.is_key_pressed(KEY_SHIFT) else 1.0)
 	if direction.length_squared() > 0.0:
-		_camera.position += direction.normalized() * speed * delta
+		# A backgrounded game window can deliver one abnormally large delta on
+		# focus return. Cap the movement step and keep FPP inside the terrain.
+		var movement_delta := minf(delta, 0.05)
+		var next_position := _camera.position + direction.normalized() * speed * movement_delta
+		next_position.x = clampf(next_position.x, 0.5, float(map_size.x) - 1.5)
+		next_position.z = clampf(next_position.z, 0.5, float(map_size.y) - 1.5)
+		var minimum_eye_height := terrain_height(next_position.x, next_position.z) + 1.75
+		next_position.y = maxf(next_position.y, minimum_eye_height)
+		_camera.position = next_position
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey:
@@ -1118,7 +1181,7 @@ func _place_ghost_at_cursor() -> void:
 	_update_status("Duch kamery ustawiony — Tab: wejdz do FPP")
 
 func _toggle_fpp() -> void:
-	if not _fpp_enabled:
+	if not _fpp_enabled and not _ghost_placed:
 		var center_position := _viewport_container.size * 0.5
 		var center_hit: Variant = _screen_to_map(center_position)
 		if center_hit == null:
@@ -1158,9 +1221,9 @@ func _toggle_fpp() -> void:
 		_camera.size = _editor_camera_size
 		_camera.far = _editor_camera_far
 		_terrain_surface.terrain.set_camera(_camera)
-		_viewport.scaling_3d_scale = 0.78
+		_viewport.scaling_3d_scale = 0.86 if visual_quality == 0 else (0.90 if visual_quality == 1 else 1.0)
 		if _sun != null:
-			_sun.directional_shadow_max_distance = 260.0
+			_sun.directional_shadow_max_distance = 360.0 if visual_quality == 0 else (520.0 if visual_quality == 1 else 760.0)
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		_update_status("Widok edycji — Shift+Tab ustawia ducha, Tab: FPP")
 

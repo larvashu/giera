@@ -643,6 +643,9 @@ func _configure_material() -> void:
 	# `show_colormap` is a white diagnostic view, not the regular color multiplier.
 	terrain.material.show_colormap = false
 	terrain.material.dual_scaling = true
+	# Lower height-blend sharpness keeps soil/grass and soil/pebble borders
+	# readable at close FPP range without producing cut-out material islands.
+	terrain.material.set_shader_param("blend_sharpness", 0.05)
 	terrain.material.update()
 	terrain.show_grey = false
 	terrain.material.world_background = Terrain3DMaterial.NONE
